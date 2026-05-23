@@ -2,6 +2,7 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL, REQUEST_TIMEOUT_MS } from '../config/env';
+import { secureStorage, getOrCreateDeviceId } from './secureStorage';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -9,13 +10,23 @@ const api = axios.create({
   timeout: REQUEST_TIMEOUT_MS,
 });
 
+// 🔐 Tokens dans secureStorage (Keychain/Keystore natif)
+// 'user' (non-secret) reste dans AsyncStorage
 api.interceptors.request.use(async (config) => {
-  const token = await AsyncStorage.getItem('accessToken');
+  const [token, deviceId] = await Promise.all([
+    secureStorage.getItem('accessToken'),
+    getOrCreateDeviceId(),
+  ]);
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  // 🛡️ Identifier de device envoyé sur toutes les requêtes (anti vol de refresh)
+  config.headers['x-device-id'] = deviceId;
   return config;
 });
+
+// Mutex pour ne pas refresh plusieurs fois en parallèle
+let refreshPromise = null;
 
 api.interceptors.response.use(
   (response) => response,
@@ -24,15 +35,32 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       try {
-        const refreshToken = await AsyncStorage.getItem('refreshToken');
-        const response = await axios.post(`${API_BASE_URL}/auth/refresh`, { refreshToken });
-        if (response.data.accessToken) {
-          await AsyncStorage.setItem('accessToken', response.data.accessToken);
-          originalRequest.headers.Authorization = `Bearer ${response.data.accessToken}`;
-          return api(originalRequest);
+        if (!refreshPromise) {
+          refreshPromise = (async () => {
+            const refreshToken = await secureStorage.getItem('refreshToken');
+            const deviceId = await getOrCreateDeviceId();
+            const response = await axios.post(
+              `${API_BASE_URL}/auth/refresh`,
+              { refreshToken },
+              { headers: { 'x-device-id': deviceId } },
+            );
+            if (response.data.accessToken && response.data.refreshToken) {
+              await secureStorage.setItem('accessToken', response.data.accessToken);
+              await secureStorage.setItem('refreshToken', response.data.refreshToken);
+              return response.data.accessToken;
+            }
+            throw new Error('Refresh failed');
+          })();
         }
+        const newAccessToken = await refreshPromise;
+        refreshPromise = null;
+        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+        return api(originalRequest);
       } catch {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
+        refreshPromise = null;
+        // 🧹 Logout complet : wipe tokens (SecureStore) + user (AsyncStorage)
+        await secureStorage.multiRemove(['accessToken', 'refreshToken']);
+        await AsyncStorage.removeItem('user');
       }
     }
     return Promise.reject(error);
@@ -43,6 +71,7 @@ export const authService = {
   login: (data) => api.post('/auth/login', data).then(res => res.data),
   register: (data) => api.post('/auth/register', data).then(res => res.data),
   logout: (data) => api.post('/auth/logout', { refreshToken: data }).then(res => res.data),
+  logoutAll: () => api.post('/auth/logout-all').then(res => res.data),
   getCurrentUser: () => api.get('/auth/me').then(res => res.data),
   changePassword: (data) => api.post('/auth/change-password', data).then(res => res.data),
 

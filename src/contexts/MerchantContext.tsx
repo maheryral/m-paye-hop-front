@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { AxiosResponse } from 'axios';
 import { merchantApi } from '../services/merchantApi';
+import { secureStorage } from '../services/secureStorage';
 
 // ============ TYPES ============
 
@@ -189,7 +190,7 @@ export const MerchantProvider: React.FC<MerchantProviderProps> = ({ children }) 
 
   // Vérifier le statut marchand
   const checkStatus = useCallback(async () => {
-    const token = await AsyncStorage.getItem('accessToken');
+    const token = await secureStorage.getItem('accessToken');
     if (!token) {
       setProfile(null);
       setUpgradeStatus('none');

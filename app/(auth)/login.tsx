@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { authService } from '../../src/services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureStorage } from '../../src/services/secureStorage';
 
 export default function Login() {
   const router = useRouter();
@@ -141,11 +142,11 @@ const verifyOTP = async () => {
   try {
     const response = await authService.verifyOTP({ code: otpValue, userId });
     if (response && response.accessToken) {
-      await AsyncStorage.setItem('accessToken', response.accessToken);
-      await AsyncStorage.setItem('refreshToken', response.refreshToken);
-      
+      // 🔐 Tokens dans SecureStore (Keychain/Keystore)
+      await secureStorage.setItem('accessToken', response.accessToken);
+      await secureStorage.setItem('refreshToken', response.refreshToken);
+
       if (response.user) {
-        
         await AsyncStorage.setItem('user', JSON.stringify(response.user));
         setUser(response.user);
       }

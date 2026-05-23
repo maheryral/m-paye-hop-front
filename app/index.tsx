@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Redirect } from 'expo-router';
 import { View, ActivityIndicator, Text } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureStorage } from '../src/services/secureStorage';
 
 export default function Index() {
   const [isLoading, setIsLoading] = useState(true);
@@ -15,8 +15,8 @@ export default function Index() {
 
   const checkAuthState = async () => {
     try {
-      const token = await AsyncStorage.getItem('accessToken');
-      const user = await AsyncStorage.getItem('user');
+      const token = await secureStorage.getItem('accessToken');
+      // (user kept in AsyncStorage but not needed for auth check)
 
       
       const isValid = !!token;

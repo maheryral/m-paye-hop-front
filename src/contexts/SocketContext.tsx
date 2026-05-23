@@ -8,7 +8,7 @@ import React, {
   useState,
 } from 'react';
 import { io, Socket } from 'socket.io-client';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureStorage } from '../services/secureStorage';
 import { useAuth } from './AuthContext';
 import { API_BASE_URL } from '../config/env';
 
@@ -69,7 +69,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
 
     const connect = async () => {
       if (!user) return;
-      const token = await AsyncStorage.getItem('accessToken');
+      const token = await secureStorage.getItem('accessToken');
       if (!token || cancelled) return;
 
       const socket = io(`${API_BASE_URL}/notifications`, {

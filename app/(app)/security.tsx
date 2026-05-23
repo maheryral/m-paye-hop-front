@@ -38,7 +38,7 @@ interface Session {
 export default function Security() {
   const router = useRouter();
   const { colors } = useTheme();
-  const { user, logout } = useAuth();
+  const { user, logoutAllDevices } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -328,6 +328,56 @@ export default function Security() {
             </View>
           </View>
         )}
+
+        {/* 🛡️ Sessions actives — déconnecter tous mes appareils */}
+        <View style={[styles.passwordCard, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 20 }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <Ionicons name="phone-portrait-outline" size={22} color={colors.text} />
+            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>
+              Sessions actives
+            </Text>
+          </View>
+          <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 14 }}>
+            Si vous avez perdu votre téléphone ou détecté une activité suspecte,
+            déconnectez tous les appareils. Vous devrez vous reconnecter partout.
+          </Text>
+          <TouchableOpacity
+            style={{
+              flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+              gap: 8, backgroundColor: '#ef4444', paddingVertical: 12, borderRadius: 10,
+            }}
+            onPress={() => {
+              Alert.alert(
+                'Déconnecter tous les appareils ?',
+                'Toutes vos sessions seront révoquées immédiatement.',
+                [
+                  { text: 'Annuler', style: 'cancel' },
+                  {
+                    text: 'Déconnecter tout',
+                    style: 'destructive',
+                    onPress: async () => {
+                      try {
+                        await logoutAllDevices();
+                        router.replace('/(auth)/login');
+                      } catch (e: any) {
+                        setMessage({
+                          type: 'error',
+                          text: e?.response?.data?.message || 'Erreur',
+                        });
+                      }
+                    },
+                  },
+                ],
+              );
+            }}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="log-out-outline" size={18} color="#fff" />
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>
+              Déconnecter tous mes appareils
+            </Text>
+          </TouchableOpacity>
+        </View>
         </View>
       </ScrollView>
     </View>

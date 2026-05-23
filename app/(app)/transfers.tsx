@@ -1,5 +1,5 @@
 // app/(app)/transfers.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import GradientHeader from '../../src/components/GradientHeader';
 import { useBiometricGuard } from '../../src/contexts/BiometricGuardContext';
+import { monetizationApi, FeeCalculation } from '../../src/services/monetizationApi';
 import { useWallet } from '../../src/contexts/WalletContext';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { transactionService } from '../../src/services/api';
@@ -40,7 +41,29 @@ export default function Transfers() {
 
   const minAmount = 1000;
   const maxAmount = 5000000;
-  const fee = 0;
+  const [feeCalc, setFeeCalc] = useState<FeeCalculation | null>(null);
+
+  // Calcul live des fees (debounced)
+  useEffect(() => {
+    if (!amountNum || amountNum <= 0) {
+      setFeeCalc(null);
+      return;
+    }
+    const t = setTimeout(async () => {
+      try {
+        const res = await monetizationApi.calculateFee('TRANSFER', amountNum);
+        setFeeCalc(res.data);
+      } catch {
+        setFeeCalc(null);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amountNum]);
+
+  const fee = feeCalc?.feeAmount ?? 0;
+  const feePercentLabel = feeCalc ? `${(feeCalc.feePercent * 100).toFixed(2)}%` : '0%';
+  const totalDebit = amountNum + fee;
  
   
   const amountNum = parseFloat(formData.amount) || 0;
@@ -231,14 +254,23 @@ export default function Transfers() {
             <Text style={[styles.feesValue, { color: colors.text }]}>{amountNum.toLocaleString()} Ar</Text>
           </View>
           <View style={styles.feesRow}>
-            <Text style={[styles.feesLabel, { color: colors.textSecondary }]}>Frais ({fee}%)</Text>
-            <Text style={[styles.feesValue, { color: colors.warning }]}>{fee} Ar</Text>
+            <Text style={[styles.feesLabel, { color: colors.textSecondary }]}>
+              Frais ({feePercentLabel})
+            </Text>
+            <Text style={[styles.feesValue, { color: fee > 0 ? colors.warning : colors.success }]}>
+              {fee > 0 ? `${fee.toLocaleString()} Ar` : 'Gratuit ✨'}
+            </Text>
           </View>
+          {feeCalc?.appliedRule && (
+            <Text style={{ fontSize: 10, color: colors.textSecondary, marginTop: -2 }}>
+              {feeCalc.appliedRule}
+            </Text>
+          )}
           <View style={[styles.feesDivider, { backgroundColor: colors.border }]} />
           <View style={styles.feesRow}>
             <Text style={[styles.feesLabel, { fontWeight: '600', color: colors.text }]}>Total à débiter</Text>
             <Text style={[styles.feesValue, { fontWeight: '700', color: hasEnoughBalance ? colors.primary : colors.error }]}>
-              {amountNum.toLocaleString()} Ar
+              {totalDebit.toLocaleString()} Ar
             </Text>
           </View>
           {!hasEnoughBalance && (

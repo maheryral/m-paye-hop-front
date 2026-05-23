@@ -1,7 +1,10 @@
 // src/contexts/AuthContext.tsx
+// 🔐 Tokens dans SecureStore (Keychain iOS / Keystore Android).
+// 'user' (objet non-sensible) reste dans AsyncStorage.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { accountService, authService } from '../services/api';
+import { secureStorage } from '../services/secureStorage';
 
 interface User {
   id: string;
@@ -29,6 +32,7 @@ interface AuthContextType {
   register: (data: RegisterData) => Promise<void>;
   loginWithTokens: (accessToken: string, refreshToken: string, userData: User) => Promise<void>;
   logout: () => Promise<void>;
+  logoutAllDevices: () => Promise<void>;
   updateUser: (data: Partial<User>) => Promise<void>;
   setUser: (user: User | null) => void;
   setUserFromTokens: (accessToken: string, refreshToken: string, userData: User) => Promise<void>;
@@ -36,6 +40,22 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// Helper centralisé pour stocker session
+async function persistSession(accessToken: string, refreshToken: string, userData: User) {
+  await Promise.all([
+    secureStorage.setItem('accessToken', accessToken),
+    secureStorage.setItem('refreshToken', refreshToken),
+    AsyncStorage.setItem('user', JSON.stringify(userData)),
+  ]);
+}
+
+async function clearSession() {
+  await Promise.all([
+    secureStorage.multiRemove(['accessToken', 'refreshToken']),
+    AsyncStorage.removeItem('user'),
+  ]);
+}
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -47,9 +67,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loadUser = async () => {
     try {
-      const token = await AsyncStorage.getItem('accessToken');
+      const token = await secureStorage.getItem('accessToken');
       const storedUser = await AsyncStorage.getItem('user');
-      
       if (token && storedUser) {
         setUser(JSON.parse(storedUser));
       }
@@ -59,91 +78,68 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
     }
   };
- const loginWithTokens = async (accessToken: string, refreshToken: string, userData: User) => {
-  try {
-    await AsyncStorage.setItem('accessToken', accessToken);
-    await AsyncStorage.setItem('refreshToken', refreshToken);
-    await AsyncStorage.setItem('user', JSON.stringify(userData));
+
+  const loginWithTokens = async (accessToken: string, refreshToken: string, userData: User) => {
+    await persistSession(accessToken, refreshToken, userData);
     setUser(userData);
-  } catch (error) {
-    console.error('Erreur connexion par tokens:', error);
-    throw error;
-  }
-};
+  };
+
   const login = async (identifier: string, password: string) => {
-    try {
-      const response = await authService.login({ login: identifier, password });
-      
-      if (response && response.accessToken) {
-        await AsyncStorage.setItem('accessToken', response.accessToken);
-        await AsyncStorage.setItem('refreshToken', response.refreshToken);
-        
-        if (response.user) {
-          await AsyncStorage.setItem('user', JSON.stringify(response.user));
-          setUser(response.user);
-        }
-      } else {
-        throw new Error('Réponse de connexion invalide');
-      }
-    } catch (error) {
-      throw error;
+    const response = await authService.login({ login: identifier, password });
+    if (response?.accessToken && response?.user) {
+      await persistSession(response.accessToken, response.refreshToken, response.user);
+      setUser(response.user);
+    } else {
+      throw new Error('Réponse de connexion invalide');
     }
   };
 
-  // Nouvelle méthode pour la connexion par OTP (inscription rapide)
   const setUserFromTokens = async (accessToken: string, refreshToken: string, userData: User) => {
-    try {
-      await AsyncStorage.setItem('accessToken', accessToken);
-      await AsyncStorage.setItem('refreshToken', refreshToken);
-      await AsyncStorage.setItem('user', JSON.stringify(userData));
-      setUser(userData);
-    } catch (error) {
-      console.error('Erreur lors du stockage des tokens:', error);
-      throw error;
-    }
+    await persistSession(accessToken, refreshToken, userData);
+    setUser(userData);
   };
 
   const register = async (data: RegisterData) => {
-    try {
-      const response = await authService.register(data);
-      
-      if (response && response.accessToken) {
-        await AsyncStorage.setItem('accessToken', response.accessToken);
-        await AsyncStorage.setItem('refreshToken', response.refreshToken);
-        
-        if (response.user) {
-          await AsyncStorage.setItem('user', JSON.stringify(response.user));
-          setUser(response.user);
-        }
-        
-        return response;
-      } else {
-        throw new Error('Réponse d\'inscription invalide');
-      }
-    } catch (error) {
-      throw error;
+    const response = await authService.register(data);
+    if (response?.accessToken && response?.user) {
+      await persistSession(response.accessToken, response.refreshToken, response.user);
+      setUser(response.user);
+      return response;
     }
+    throw new Error("Réponse d'inscription invalide");
   };
 
   const logout = async () => {
     try {
-      const token = await AsyncStorage.getItem('refreshToken');
+      const token = await secureStorage.getItem('refreshToken');
       if (token) {
         await authService.logout(token);
       }
     } catch (error) {
       console.error('Erreur logout:', error);
     } finally {
-      await AsyncStorage.removeItem('accessToken');
-      await AsyncStorage.removeItem('refreshToken');
-      await AsyncStorage.removeItem('user');
+      await clearSession();
+      setUser(null);
+    }
+  };
+
+  /**
+   * Déconnecte TOUS les appareils de l'utilisateur (révoque toutes les sessions côté serveur).
+   * Utile en cas de vol/perte d'appareil.
+   */
+  const logoutAllDevices = async () => {
+    try {
+      await authService.logoutAll();
+    } catch (error) {
+      console.error('Erreur logoutAll:', error);
+    } finally {
+      await clearSession();
       setUser(null);
     }
   };
 
   const updateUser = async (data: Partial<User>) => {
     if (!user) return;
-
     try {
       const response = await accountService.updateProfile(data);
       const updated = { ...user, ...data };
@@ -165,6 +161,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loginWithTokens,
         register,
         logout,
+        logoutAllDevices,
         updateUser,
         setUserFromTokens,
         setUser,

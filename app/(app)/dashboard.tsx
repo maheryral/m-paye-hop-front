@@ -67,12 +67,6 @@ export default function Dashboard() {
   const [showBalance, setShowBalance] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const promoBanners = [
-    { id: 'p1', title: 'Cashback 5%', subtitle: 'Sur tous vos paiements QR', emoji: '🎁', gradient: ['#3b82f6', '#1e40af'] as const },
-    { id: 'p2', title: 'Transfert gratuit', subtitle: 'Vers tous les utilisateurs M\'Paye', emoji: '💸', gradient: ['#059669', '#1e3a8a'] as const },
-    { id: 'p3', title: 'Bonus parrainage', subtitle: 'Gagnez 5000 Ar par ami invité', emoji: '🤝', gradient: ['#60a5fa', '#1e40af'] as const },
-  ];
-
   useEffect(() => {
     fetchBalance();
   }, []);
@@ -235,6 +229,73 @@ export default function Dashboard() {
   );
 
   // Section Vente principale
+  const renderPromoSection = () => (
+    <View style={styles.section}>
+      <View style={styles.sectionHeader}>
+        <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 0 }]}>
+          Vos avantages M'Paye
+        </Text>
+      </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: 4, gap: 12 }}
+      >
+        {/* Cashback 5% */}
+        <LinearGradient
+          colors={['#1e3a8a', '#3b82f6']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.promoCard}
+        >
+          <View style={styles.promoIconBubble}>
+            <Ionicons name="cash" size={22} color="#fff" />
+          </View>
+          <Text style={styles.promoBadge}>5%</Text>
+          <Text style={styles.promoTitle}>Cashback</Text>
+          <Text style={styles.promoSubtitle}>
+            5% remboursés sur chaque paiement marchand
+          </Text>
+        </LinearGradient>
+
+        {/* Transferts gratuits */}
+        <LinearGradient
+          colors={['#0f172a', '#1e40af']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.promoCard}
+        >
+          <View style={styles.promoIconBubble}>
+            <Ionicons name="send" size={22} color="#fff" />
+          </View>
+          <Text style={styles.promoBadge}>0 Ar</Text>
+          <Text style={styles.promoTitle}>Transferts gratuits</Text>
+          <Text style={styles.promoSubtitle}>
+            Aucun frais entre comptes M'Paye
+          </Text>
+        </LinearGradient>
+
+        {/* Bonus parrainage */}
+        <LinearGradient
+          colors={['#1e40af', '#60a5fa']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.promoCard}
+        >
+          <View style={styles.promoIconBubble}>
+            <Ionicons name="gift" size={22} color="#fff" />
+          </View>
+          <Text style={styles.promoBadge}>+5 000 Ar</Text>
+          <Text style={styles.promoTitle}>Bonus parrainage</Text>
+          <Text style={styles.promoSubtitle}>
+            Invitez un proche, gagnez 5 000 Ar
+          </Text>
+        </LinearGradient>
+      </ScrollView>
+    </View>
+  );
+
   const renderSalesSection = () => (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
@@ -455,7 +516,10 @@ export default function Dashboard() {
           {activeMenu === 'homeapps' && renderHomeAppsSection()}
           {activeMenu === 'travel' && renderTravelSection()}
           {activeMenu === 'bank' && renderBankSection()}
-          
+
+          {/* SECTION PROMO — Cashback / Transferts gratuits / Parrainage */}
+          {renderPromoSection()}
+
           {/* SECTION VENTE EN BAS - AFFICHÉE TOUT LE TEMPS DANS L'ONGLET HOME */}
           {renderSalesSection()}
         </>
@@ -569,30 +633,6 @@ export default function Dashboard() {
                 </TouchableOpacity>
               ))}
             </View>
-
-            {/* === CAROUSEL PROMO === */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.promoScrollContent}
-              style={styles.promoScroll}
-            >
-              {promoBanners.map((banner) => (
-                <LinearGradient
-                  key={banner.id}
-                  colors={banner.gradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.promoBanner}
-                >
-                  <View style={styles.promoTextWrap}>
-                    <Text style={styles.promoTitle}>{banner.title}</Text>
-                    <Text style={styles.promoSubtitle}>{banner.subtitle}</Text>
-                  </View>
-                  <Text style={styles.promoEmoji}>{banner.emoji}</Text>
-                </LinearGradient>
-              ))}
-            </ScrollView>
 
             {/* Contenu principal */}
             {renderMainContent()}
@@ -896,14 +936,50 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  section: { 
-    marginBottom: 24 
+  section: {
+    marginBottom: 24
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
+  },
+  promoCard: {
+    width: 200,
+    padding: 16,
+    borderRadius: 18,
+    gap: 6,
+    shadowColor: '#1e40af',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  promoIconBubble: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  promoBadge: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  promoTitle: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  promoSubtitle: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 11,
+    lineHeight: 15,
   },
   salesTitleRow: {
     flexDirection: 'row',

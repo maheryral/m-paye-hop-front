@@ -116,6 +116,7 @@ function CustomDrawerContent({ navigation }: any) {
     { name: 'Historique', route: 'history', icon: 'time-outline', color: '#64748b' },
     { name: 'Factures', route: 'bills', icon: 'document-text-outline', color: '#ef4444' },
     { name: 'Bénéficiaires', route: 'beneficiaries', icon: 'people-outline', color: '#1e40af' },
+    { name: 'Premium', route: 'premium', icon: 'star-outline', color: '#3b82f6' },
   ];
 
   const settingsMenuItems = [
@@ -126,6 +127,7 @@ function CustomDrawerContent({ navigation }: any) {
   const isAdmin = (user as any)?.role === 'ADMIN';
   const adminMenuItems = isAdmin ? [
     { name: 'Validation paiements', route: 'admin-payments', icon: 'shield-checkmark-outline', color: '#1e40af' },
+    { name: 'Revenus plateforme', route: 'admin-revenue', icon: 'trending-up-outline', color: '#10b981' },
   ] : [];
 
   const merchantMenuItems = [
@@ -472,6 +474,8 @@ export default function AppLayout() {
       <Drawer.Screen name="notifications" options={{ title: 'Notifications' }} />
       <Drawer.Screen name="merchant-signup" options={{ title: 'Devenir Commerçant' }} />
       <Drawer.Screen name="admin-payments" options={{ title: 'Validation paiements' }} />
+      <Drawer.Screen name="admin-revenue" options={{ title: 'Revenus plateforme' }} />
+      <Drawer.Screen name="premium" options={{ title: 'Premium' }} />
       <Drawer.Screen name="merchant/dashboard" options={{ title: 'Dashboard' }} />
       <Drawer.Screen name="merchant/scanner" options={{ title: 'Scanner QR' }} />
       <Drawer.Screen name="merchant/qrcode" options={{ title: 'QR Code' }} />
