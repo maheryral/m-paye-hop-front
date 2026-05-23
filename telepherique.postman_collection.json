@@ -1,0 +1,284 @@
+{
+  "info": {
+    "name": "M'Paye - Téléphérique (seed + user flow)",
+    "description": "Crée une ligne, ses stations, ses tarifs, puis teste l'achat + paiement d'un ticket côté user.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://192.168.88.19:3000" },
+    { "key": "accessToken", "value": "" },
+    { "key": "ligneId", "value": "" },
+    { "key": "station1Id", "value": "" },
+    { "key": "station2Id", "value": "" },
+    { "key": "station3Id", "value": "" },
+    { "key": "tarifSimpleId", "value": "" },
+    { "key": "tarifRetourId", "value": "" },
+    { "key": "ticketId", "value": "" },
+    { "key": "userEmail", "value": "ton-email@test.com" },
+    { "key": "userPassword", "value": "ton-mot-de-passe" }
+  ],
+  "item": [
+    {
+      "name": "1. Login (récupère le token)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json.accessToken) {",
+              "  pm.collectionVariables.set('accessToken', json.accessToken);",
+              "  console.log('✅ Token sauvegardé');",
+              "}",
+              "pm.test('Status 200/201', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+      }
+    },
+    {
+      "name": "2. Créer Ligne 1 (Anosy → Soanierana)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json.id) {",
+              "  pm.collectionVariables.set('ligneId', json.id);",
+              "  console.log('✅ ligneId =', json.id);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nom\": \"Ligne 1 - Anosy / Soanierana\",\n  \"code\": \"L1\",\n  \"couleur\": \"#0891b2\",\n  \"description\": \"Première ligne de téléphérique urbain d'Antananarivo\",\n  \"longueurKm\": 8.5,\n  \"dureeMinutes\": 25,\n  \"statut\": \"actif\",\n  \"horaireOuverture\": \"05:30\",\n  \"horaireFermeture\": \"22:00\"\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/telepherique/lignes", "host": ["{{baseUrl}}"], "path": ["telepherique", "lignes"] }
+      }
+    },
+    {
+      "name": "3. Créer Station 1 (Anosy)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json.id) pm.collectionVariables.set('station1Id', json.id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nom\": \"Anosy\",\n  \"localisation\": \"Anosy, Antananarivo\",\n  \"ordre\": 1,\n  \"latitude\": -18.9098,\n  \"longitude\": 47.5219,\n  \"ligneId\": \"{{ligneId}}\"\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/telepherique/stations", "host": ["{{baseUrl}}"], "path": ["telepherique", "stations"] }
+      }
+    },
+    {
+      "name": "4. Créer Station 2 (Ankorondrano)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json.id) pm.collectionVariables.set('station2Id', json.id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nom\": \"Ankorondrano\",\n  \"localisation\": \"Ankorondrano, Antananarivo\",\n  \"ordre\": 2,\n  \"latitude\": -18.8742,\n  \"longitude\": 47.5302,\n  \"ligneId\": \"{{ligneId}}\"\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/telepherique/stations", "host": ["{{baseUrl}}"], "path": ["telepherique", "stations"] }
+      }
+    },
+    {
+      "name": "5. Créer Station 3 (Soanierana)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json.id) pm.collectionVariables.set('station3Id', json.id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nom\": \"Soanierana\",\n  \"localisation\": \"Soanierana, Antananarivo\",\n  \"ordre\": 3,\n  \"latitude\": -18.8403,\n  \"longitude\": 47.5621,\n  \"ligneId\": \"{{ligneId}}\"\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/telepherique/stations", "host": ["{{baseUrl}}"], "path": ["telepherique", "stations"] }
+      }
+    },
+    {
+      "name": "6. Créer Tarif SIMPLE (Aller)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json.id) pm.collectionVariables.set('tarifSimpleId', json.id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"type\": \"SIMPLE\",\n  \"libelle\": \"Aller simple\",\n  \"prix\": 2000,\n  \"description\": \"Un trajet sur la ligne\",\n  \"validiteHeures\": 4,\n  \"ligneId\": \"{{ligneId}}\"\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/telepherique/tarifs", "host": ["{{baseUrl}}"], "path": ["telepherique", "tarifs"] }
+      }
+    },
+    {
+      "name": "7. Créer Tarif RETOUR (Aller-Retour)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json.id) pm.collectionVariables.set('tarifRetourId', json.id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"type\": \"RETOUR\",\n  \"libelle\": \"Aller-retour\",\n  \"prix\": 3500,\n  \"description\": \"Deux trajets dans la journée\",\n  \"validiteHeures\": 24,\n  \"ligneId\": \"{{ligneId}}\"\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/telepherique/tarifs", "host": ["{{baseUrl}}"], "path": ["telepherique", "tarifs"] }
+      }
+    },
+    {
+      "name": "8. Créer Tarif JOUR",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"type\": \"JOUR\",\n  \"libelle\": \"Pass journée\",\n  \"prix\": 6000,\n  \"description\": \"Trajets illimités pendant 24h\",\n  \"validiteHeures\": 24,\n  \"ligneId\": \"{{ligneId}}\"\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/telepherique/tarifs", "host": ["{{baseUrl}}"], "path": ["telepherique", "tarifs"] }
+      }
+    },
+    {
+      "name": "9. Lister toutes les lignes",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "{{baseUrl}}/telepherique/lignes", "host": ["{{baseUrl}}"], "path": ["telepherique", "lignes"] }
+      }
+    },
+    {
+      "name": "10. Détail d'une ligne (avec stations + tarifs)",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "{{baseUrl}}/telepherique/lignes/{{ligneId}}", "host": ["{{baseUrl}}"], "path": ["telepherique", "lignes", "{{ligneId}}"] }
+      }
+    },
+    {
+      "name": "11. Acheter un ticket SIMPLE (Anosy → Soanierana) 🔐",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json.id) {",
+              "  pm.collectionVariables.set('ticketId', json.id);",
+              "  console.log('✅ ticketId =', json.id, 'codeQR =', json.codeQR);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"ligneId\": \"{{ligneId}}\",\n  \"tarifId\": \"{{tarifSimpleId}}\",\n  \"stationDepartId\": \"{{station1Id}}\",\n  \"stationArriveeId\": \"{{station3Id}}\"\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/telepherique/tickets", "host": ["{{baseUrl}}"], "path": ["telepherique", "tickets"] }
+      }
+    },
+    {
+      "name": "12. Payer le ticket (wallet) 🔐",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"mode\": \"wallet\"\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/telepherique/tickets/{{ticketId}}/pay", "host": ["{{baseUrl}}"], "path": ["telepherique", "tickets", "{{ticketId}}", "pay"] }
+      }
+    },
+    {
+      "name": "13. Mes tickets 🔐",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": { "raw": "{{baseUrl}}/telepherique/tickets/me", "host": ["{{baseUrl}}"], "path": ["telepherique", "tickets", "me"] }
+      }
+    },
+    {
+      "name": "14. (Agent) Valider QR à la station 🔐",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": { "raw": "{{baseUrl}}/telepherique/tickets/validate/TLP-REMPLACE-CODE-QR", "host": ["{{baseUrl}}"], "path": ["telepherique", "tickets", "validate", "TLP-REMPLACE-CODE-QR"] }
+      }
+    }
+  ]
+}
