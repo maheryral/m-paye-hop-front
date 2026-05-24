@@ -18,6 +18,7 @@ import { useTheme } from '../../src/contexts/ThemeContext';
 import GradientHeader from '../../src/components/GradientHeader';
 import { useBiometricGuard } from '../../src/contexts/BiometricGuardContext';
 import { monetizationApi, FeeCalculation } from '../../src/services/monetizationApi';
+import { useLocale } from '../../src/contexts/LocaleContext';
 import { useWallet } from '../../src/contexts/WalletContext';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { transactionService } from '../../src/services/api';
@@ -26,12 +27,16 @@ export default function Transfers() {
   const router = useRouter();
   const { colors } = useTheme();
   const { requireBiometric } = useBiometricGuard();
+  const { formatCurrency } = useLocale();
   const { balance, fetchBalance } = useWallet();
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(1);
   const [searching, setSearching] = useState(false);
   const [validatedRecipient, setValidatedRecipient] = useState<any>(null);
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestionTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [formData, setFormData] = useState({
     toPhone: '',
     recipientName: '',
@@ -41,6 +46,12 @@ export default function Transfers() {
 
   const minAmount = 1000;
   const maxAmount = 5000000;
+
+  const amountNum = parseFloat(formData.amount) || 0;
+  const hasEnoughBalance = amountNum <= balance;
+  const isAmountValid = amountNum >= minAmount && amountNum <= maxAmount;
+  const isFormValid = validatedRecipient && formData.amount && isAmountValid && hasEnoughBalance;
+
   const [feeCalc, setFeeCalc] = useState<FeeCalculation | null>(null);
 
   // Calcul live des fees (debounced)
@@ -64,44 +75,22 @@ export default function Transfers() {
   const fee = feeCalc?.feeAmount ?? 0;
   const feePercentLabel = feeCalc ? `${(feeCalc.feePercent * 100).toFixed(2)}%` : '0%';
   const totalDebit = amountNum + fee;
- 
-  
-  const amountNum = parseFloat(formData.amount) || 0;
-  const hasEnoughBalance = amountNum <= balance;
-  const isAmountValid = amountNum >= minAmount && amountNum <= maxAmount;
-  const isFormValid = validatedRecipient && formData.amount && isAmountValid && hasEnoughBalance;
   
   
-  const searchUser = async (identifier: string) => {
-    if (!identifier || identifier.length < 3) {
-      setValidatedRecipient(null);
+  // 🔎 Recherche debounced d'utilisateurs (email OU téléphone, normalisé)
+  const fetchSuggestions = async (q: string) => {
+    if (!q || q.length < 3) {
+      setSuggestions([]);
+      setShowSuggestions(false);
       return;
     }
-
     setSearching(true);
     try {
-      let response;
-      const isEmail = identifier.includes('@');
-      
-      if (isEmail) {
-        response = await transactionService.searchUserByEmail(identifier);
-      } else {
-        const cleanPhone = identifier.replace(/\s/g, '');
-        response = await transactionService.searchUserByPhone(cleanPhone);
-      }
-      console.log(response);
-      
-      if (response?.id) {
-        setValidatedRecipient(response);
-        setFormData(prev => ({
-          ...prev,
-          recipientName: response.id || `${response.prenom} ${response.nom}`,
-        }));
-      } else {
-        setValidatedRecipient(null);
-      }
-    } catch (error) {
-      setValidatedRecipient(null);
+      const list = await transactionService.suggestUsers(q);
+      setSuggestions(Array.isArray(list) ? list : []);
+      setShowSuggestions(true);
+    } catch {
+      setSuggestions([]);
     } finally {
       setSearching(false);
     }
@@ -110,10 +99,22 @@ export default function Transfers() {
   const handleToPhoneChange = (text: string) => {
     setFormData(prev => ({ ...prev, toPhone: text, recipientName: '' }));
     setValidatedRecipient(null);
-    
-    if (text.length >= 3) {
-      searchUser(text);
-    }
+
+    if (suggestionTimer.current) clearTimeout(suggestionTimer.current);
+    suggestionTimer.current = setTimeout(() => fetchSuggestions(text), 250);
+  };
+
+  // L'user tape sur une suggestion : on remplit + on valide le destinataire
+  const pickRecipient = (recipient: any) => {
+    setValidatedRecipient(recipient);
+    setFormData(prev => ({
+      ...prev,
+      // Affiche email si c'est un email recherché, sinon téléphone
+      toPhone: recipient.email || recipient.telephone,
+      recipientName: `${recipient.prenom || ''} ${recipient.nom || ''}`.trim(),
+    }));
+    setSuggestions([]);
+    setShowSuggestions(false);
   };
 
   const handleAmountChange = (text: string) => {
@@ -142,7 +143,7 @@ export default function Transfers() {
     }
     
     if (!hasEnoughBalance) {
-      Alert.alert('Erreur', `Solde insuffisant. Solde disponible: ${balance.toLocaleString()} Ar`);
+      Alert.alert('Erreur', `Solde insuffisant. Solde disponible: ${formatCurrency(balance)}`);
       return;
     }
 
@@ -202,6 +203,45 @@ export default function Transfers() {
           />
           {searching && <ActivityIndicator size="small" color={colors.primary} />}
         </View>
+
+        {/* 🔎 Dropdown suggestions */}
+        {showSuggestions && suggestions.length > 0 && !validatedRecipient && (
+          <View style={[styles.suggBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            {suggestions.map((u) => (
+              <TouchableOpacity
+                key={u.id}
+                style={[styles.suggItem, { borderBottomColor: colors.border }]}
+                onPress={() => pickRecipient(u)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.suggAvatar, { backgroundColor: colors.primary }]}>
+                  <Text style={styles.suggAvatarText}>
+                    {(u.prenom?.[0] || u.email?.[0] || '?').toUpperCase()}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.suggName, { color: colors.text }]} numberOfLines={1}>
+                    {`${u.prenom || ''} ${u.nom || ''}`.trim() || 'Utilisateur'}
+                  </Text>
+                  <Text style={[styles.suggContact, { color: colors.textSecondary }]} numberOfLines={1}>
+                    {u.email} {u.telephone ? `· ${u.telephone}` : ''}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Empty state si recherche sans résultats */}
+        {showSuggestions && suggestions.length === 0 && !searching && formData.toPhone.length >= 3 && !validatedRecipient && (
+          <View style={[styles.suggEmpty, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Ionicons name="search-outline" size={16} color={colors.textSecondary} />
+            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+              Aucun utilisateur trouvé
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* Bénéficiaire validé */}
@@ -275,7 +315,7 @@ export default function Transfers() {
           </View>
           {!hasEnoughBalance && (
             <Text style={[styles.errorText, { marginTop: 8 }]}>
-              Solde insuffisant. Solde disponible: {balance.toLocaleString()} Ar
+              Solde insuffisant. Solde disponible: {formatCurrency(balance)}
             </Text>
           )}
         </View>
@@ -410,7 +450,7 @@ export default function Transfers() {
         {/* Balance card */}
         <View style={[styles.balanceCard, { backgroundColor: colors.primary }]}>
           <Text style={styles.balanceLabel}>Solde disponible</Text>
-          <Text style={styles.balanceAmount}>{balance.toLocaleString()} Ar</Text>
+          <Text style={styles.balanceAmount}>{formatCurrency(balance)}</Text>
           <Text style={styles.balanceAccount}>
             Compte: {user?.prenom || 'Compte principal'}
           </Text>
@@ -530,6 +570,44 @@ const styles = StyleSheet.create({
     color: '#ef4444',
     fontSize: 12,
     marginTop: 4,
+  },
+  suggBox: {
+    marginTop: 6,
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  suggItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderBottomWidth: 1,
+  },
+  suggAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  suggAvatarText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  suggName: { fontSize: 14, fontWeight: '600' },
+  suggContact: { fontSize: 11, marginTop: 2 },
+  suggEmpty: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 6,
+    padding: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+    borderStyle: 'dashed',
   },
   validatedCard: {
     borderWidth: 1,

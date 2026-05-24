@@ -13,6 +13,7 @@ import { AccountProvider } from '../src/contexts/AccountContext';
 import { RoleProvider } from '../src/contexts/RoleContext';
 import { BiometricGuardProvider } from '../src/contexts/BiometricGuardContext';
 import { SocketProvider } from '../src/contexts/SocketContext';
+import { LocaleProvider } from '../src/contexts/LocaleContext';
 import NotificationToast from '../src/components/NotificationToast';
 
 SplashScreen.preventAutoHideAsync();
@@ -66,6 +67,7 @@ function RootLayoutNav() {
       <SafeAreaProvider>
         <ThemedStatusBar />
         <AuthProvider>
+          <LocaleProvider>
           <BiometricGuardProvider>
             <SocketProvider>
               <RoleProvider>
@@ -88,6 +90,7 @@ function RootLayoutNav() {
               </RoleProvider>
             </SocketProvider>
           </BiometricGuardProvider>
+          </LocaleProvider>
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

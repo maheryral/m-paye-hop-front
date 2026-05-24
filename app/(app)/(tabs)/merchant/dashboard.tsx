@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import NotificationBadge from '../../../../src/components/NotificationBadge';
 import { router } from 'expo-router';
 import { LineChart } from 'react-native-chart-kit';
 import { merchantApi } from '../../../../src/services/merchantApi';
@@ -144,6 +145,7 @@ export default function MerchantDashboard() {
               onPress={() => router.push('./notifications')}
             >
               <Ionicons name="notifications-outline" size={20} color="#fff" />
+              <NotificationBadge size={18} borderColor="#1e40af" />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.avatar}

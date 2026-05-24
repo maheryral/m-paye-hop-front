@@ -28,6 +28,8 @@ import { captureRef } from 'react-native-view-shot';
 import QRCode from 'react-native-qrcode-svg';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { transactionService } from '../../src/services/api';
+import { useLocale } from '../../src/contexts/LocaleContext';
+import { useSocket } from '../../src/contexts/SocketContext';
 
 export default function QRPayment() {
   const router = useRouter();
@@ -35,6 +37,8 @@ export default function QRPayment() {
   const { requireBiometric } = useBiometricGuard();
   const { user } = useAuth();
   const { balance, fetchBalance } = useWallet();
+  const { formatCurrency } = useLocale();
+  const { onNotification } = useSocket();
   const [scanMode, setScanMode] = useState(true);
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
@@ -43,6 +47,7 @@ export default function QRPayment() {
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
+  const [loadingTx, setLoadingTx] = useState(true);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -62,13 +67,37 @@ export default function QRPayment() {
   useEffect(() => {
     loadRecentTransactions();
     fetchBalance();
+    // 🔌 Refresh quand une notif arrive (transfert reçu/envoyé, etc.)
+    const unsub = onNotification((n) => {
+      if (
+        n.type === 'TRANSFER_SENT' ||
+        n.type === 'TRANSFER_RECEIVED' ||
+        n.type === 'PAYMENT_SUCCESS'
+      ) {
+        loadRecentTransactions();
+        fetchBalance();
+      }
+    });
+    return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadRecentTransactions = () => {
-    setRecentTransactions([
-      { id: '1', title: 'Shop Express', amount: 15000, date: new Date(), type: 'payment' },
-      { id: '2', title: 'Restaurant Le Gourmet', amount: 35000, date: new Date(Date.now() - 86400000), type: 'payment' },
-    ]);
+  // 📡 Récupère les vraies transactions de l'API (5 dernières, tout type)
+  const loadRecentTransactions = async () => {
+    try {
+      setLoadingTx(true);
+      const res = await transactionService.getTransactions({ limit: 5 });
+      const list = res?.transactions || res || [];
+      setRecentTransactions(Array.isArray(list) ? list : []);
+    } catch (e: any) {
+      console.error(
+        'Erreur chargement transactions QR:',
+        e?.response?.data || e?.message,
+      );
+      setRecentTransactions([]);
+    } finally {
+      setLoadingTx(false);
+    }
   };
 
   const showSuccessAnimation = (amountValue: number) => {
@@ -240,13 +269,19 @@ export default function QRPayment() {
     setAmount('');
   };
 
-  const formatDate = (date: Date) => {
+  const formatDate = (input: Date | string | null | undefined) => {
+    if (!input) return '';
+    const date = input instanceof Date ? input : new Date(input);
+    if (isNaN(date.getTime())) return '';
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    if (days === 0) return "Aujourd'hui";
+    if (days === 0) {
+      return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    }
     if (days === 1) return 'Hier';
-    return date.toLocaleDateString('fr-FR');
+    if (days < 7) return `Il y a ${days} jours`;
+    return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
   };
 
   const getUserDisplayName = () => {
@@ -433,22 +468,65 @@ export default function QRPayment() {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: colors.text }]}>Transactions récentes</Text>
-              <TouchableOpacity><Text style={[styles.sectionAction, { color: colors.primary }]}>Voir tout</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => router.push('/history' as any)}>
+                <Text style={[styles.sectionAction, { color: colors.primary }]}>Voir tout</Text>
+              </TouchableOpacity>
             </View>
-            {recentTransactions.map((transaction) => (
-              <View key={transaction.id} style={[styles.transactionCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <View style={styles.transactionLeft}>
-                  <View style={[styles.transactionIcon, { backgroundColor: transaction.type === 'payment' ? `${colors.error}20` : `${colors.success}20` }]}>
-                    <Ionicons name={transaction.type === 'payment' ? 'qr-code-outline' : 'checkmark-circle-outline'} size={20} color={transaction.type === 'payment' ? colors.error : colors.success} />
-                  </View>
-                  <View>
-                    <Text style={[styles.transactionTitle, { color: colors.text }]}>{transaction.title}</Text>
-                    <Text style={[styles.transactionDate, { color: colors.textSecondary }]}>{formatDate(transaction.date)}</Text>
-                  </View>
-                </View>
-                <Text style={[styles.transactionAmount, { color: colors.error }]}>-{transaction.amount.toLocaleString()} Ar</Text>
+
+            {loadingTx ? (
+              <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                <ActivityIndicator color={colors.primary} />
               </View>
-            ))}
+            ) : recentTransactions.length === 0 ? (
+              <View style={[styles.transactionCard, { backgroundColor: colors.card, borderColor: colors.border, justifyContent: 'center', paddingVertical: 24 }]}>
+                <View style={{ alignItems: 'center', gap: 6 }}>
+                  <Ionicons name="receipt-outline" size={32} color={colors.textSecondary} />
+                  <Text style={{ color: colors.textSecondary, fontSize: 13 }}>
+                    Aucune transaction pour le moment
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              recentTransactions.map((tx: any) => {
+                // Format unifié depuis l'API : { id, type, montant, motif, createdAt, isCredit, sender?, receiver? }
+                const isCredit = !!tx.isCredit || tx.type === 'DEPOSIT';
+                const amount = Number(tx.montant ?? tx.amount ?? 0);
+                const title =
+                  tx.motif ||
+                  (isCredit
+                    ? tx.sender
+                      ? `Reçu de ${tx.sender.fullName || tx.sender.email || tx.sender.telephone}`
+                      : 'Crédit'
+                    : tx.receiver
+                      ? `Envoyé à ${tx.receiver.fullName || tx.receiver.email || tx.receiver.telephone}`
+                      : 'Débit');
+                const iconName: any = isCredit ? 'arrow-down-circle-outline' : 'arrow-up-circle-outline';
+                const iconColor = isCredit ? colors.success : colors.error;
+                const amountColor = isCredit ? colors.success : colors.error;
+                const sign = isCredit ? '+' : '-';
+
+                return (
+                  <View key={tx.id} style={[styles.transactionCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <View style={styles.transactionLeft}>
+                      <View style={[styles.transactionIcon, { backgroundColor: `${iconColor}20` }]}>
+                        <Ionicons name={iconName} size={20} color={iconColor} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.transactionTitle, { color: colors.text }]} numberOfLines={1}>
+                          {title}
+                        </Text>
+                        <Text style={[styles.transactionDate, { color: colors.textSecondary }]}>
+                          {formatDate(tx.createdAt ?? tx.date)}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={[styles.transactionAmount, { color: amountColor }]}>
+                      {sign}{formatCurrency(amount)}
+                    </Text>
+                  </View>
+                );
+              })
+            )}
           </View>
         </View>
       </ScrollView>

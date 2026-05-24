@@ -94,6 +94,7 @@ export const accountService = {
   getHistory: (params) => api.get('/wallet/history', { params }).then(res => res.data),
   deposit: (data) => api.post('/wallet/deposit', data).then(res => res.data),
   withdraw: (data) => api.post('/wallet/withdraw', data).then(res => res.data),
+  getProfile: () => api.get('/user/profile').then(res => res.data),
   updateProfile: (data) => api.patch('/user/profile', data).then(res => res.data),
 };
 
@@ -102,6 +103,8 @@ export const transactionService = {
   transfer: (data) => api.post('/transactions/transfer', data).then(res => res.data),
   searchUserByEmail: (email) => api.get(`/user/search?email=${email}`).then(res => res.data),
   searchUserByPhone: (phone) => api.get(`/user/search?phone=${phone}`).then(res => res.data),
+  // 🔎 Autocomplete users (email + phone avec normalisation préfixe pays)
+  suggestUsers: (q) => api.get('/user/suggest', { params: { q } }).then(res => res.data),
 };
 
 export const notificationService = {

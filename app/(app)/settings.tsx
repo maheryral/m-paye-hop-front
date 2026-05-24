@@ -18,6 +18,8 @@ import { useAuth } from '../../src/contexts/AuthContext';
 import { userPreferencesService } from '../../src/services/api';
 import { useBiometric } from '../../src/hooks/useBiometric';
 import { useBiometricGuard } from '../../src/contexts/BiometricGuardContext';
+import { useLocale, Currency } from '../../src/contexts/LocaleContext';
+import type { Language } from '../../src/i18n/translations';
 
 interface SettingSection {
   title: string;
@@ -67,6 +69,7 @@ export default function Settings() {
   const { logout, user } = useAuth();
   const { support: biometricSupport, authenticate: biometricAuth, label: biometricLabel } = useBiometric();
   const { refreshPref: refreshBiometricGuard } = useBiometricGuard();
+  const { language, currency, setLanguage, setCurrency, t } = useLocale();
 
   const [prefs, setPrefs] = useState<Preferences>(DEFAULT_PREFS);
   const [loadingPrefs, setLoadingPrefs] = useState(true);
@@ -166,32 +169,32 @@ export default function Settings() {
 
   const handleLanguageChange = () => {
     Alert.alert(
-      'Langue',
+      t('settings.language'),
       'Choisissez votre langue',
       [
-        { text: 'Français', onPress: () => savePref({ language: 'fr' }) },
-        { text: 'English', onPress: () => savePref({ language: 'en' }) },
-        { text: 'Malagasy', onPress: () => savePref({ language: 'mg' }) },
-        { text: 'Annuler', style: 'cancel' },
+        { text: 'Français', onPress: async () => { await setLanguage('fr'); savePref({ language: 'fr' }); } },
+        { text: 'English', onPress: async () => { await setLanguage('en'); savePref({ language: 'en' }); } },
+        { text: 'Malagasy', onPress: async () => { await setLanguage('mg'); savePref({ language: 'mg' }); } },
+        { text: t('common.cancel'), style: 'cancel' },
       ]
     );
   };
 
   const handleCurrencyChange = () => {
     Alert.alert(
-      'Devise',
+      t('settings.currency'),
       'Choisissez votre devise par défaut',
       [
-        { text: 'Ariary (Ar)', onPress: () => savePref({ currency: 'Ar' }) },
-        { text: 'Euro (€)', onPress: () => savePref({ currency: 'EUR' }) },
-        { text: 'Dollar ($)', onPress: () => savePref({ currency: 'USD' }) },
-        { text: 'Annuler', style: 'cancel' },
+        { text: 'Ariary (Ar)', onPress: async () => { await setCurrency('Ar'); savePref({ currency: 'Ar' }); } },
+        { text: 'Euro (€)', onPress: async () => { await setCurrency('EUR' as Currency); savePref({ currency: 'EUR' }); } },
+        { text: 'Dollar ($)', onPress: async () => { await setCurrency('USD' as Currency); savePref({ currency: 'USD' }); } },
+        { text: t('common.cancel'), style: 'cancel' },
       ]
     );
   };
 
-  const languageLabel = ({ fr: 'Français', en: 'English', mg: 'Malagasy' } as Record<string, string>)[prefs.language] || 'Français';
-  const currencyLabel = ({ Ar: 'Ar', EUR: '€', USD: '$' } as Record<string, string>)[prefs.currency] || 'Ar';
+  const languageLabel = ({ fr: 'Français', en: 'English', mg: 'Malagasy' } as Record<string, string>)[language] || 'Français';
+  const currencyLabel = ({ Ar: 'Ar', EUR: '€', USD: '$' } as Record<string, string>)[currency] || 'Ar';
 
   const handleExportData = () => {
     Alert.alert(
@@ -226,16 +229,16 @@ export default function Settings() {
 
   const settingsSections: SettingSection[] = [
     {
-      title: 'Préférences',
+      title: t('settings.preferences'),
       icon: 'options-outline',
       items: [
-        { id: 'theme', label: 'Thème', description: 'Clair, sombre ou système', type: 'select', rightValue: isDark ? 'Sombre' : 'Clair', action: handleThemeChange },
-        { id: 'language', label: 'Langue', description: languageLabel, type: 'select', rightValue: languageLabel, action: handleLanguageChange },
-        { id: 'currency', label: 'Devise par défaut', description: prefs.currency, type: 'select', rightValue: currencyLabel, action: handleCurrencyChange },
+        { id: 'theme', label: t('settings.theme'), description: 'Clair, sombre ou système', type: 'select', rightValue: isDark ? 'Sombre' : 'Clair', action: handleThemeChange },
+        { id: 'language', label: t('settings.language'), description: languageLabel, type: 'select', rightValue: languageLabel, action: handleLanguageChange },
+        { id: 'currency', label: t('settings.currency'), description: currency, type: 'select', rightValue: currencyLabel, action: handleCurrencyChange },
       ],
     },
     {
-      title: 'Notifications',
+      title: t('settings.notifications'),
       icon: 'notifications-outline',
       items: [
         { id: 'notifEmail', label: 'Notifications email', description: 'Recevoir les alertes par email', type: 'toggle', value: prefs.notifEmail, action: () => toggleNotification('notifEmail') },
@@ -245,7 +248,7 @@ export default function Settings() {
       ],
     },
     {
-      title: 'Confidentialité',
+      title: t('settings.privacy'),
       icon: 'lock-closed-outline',
       items: [
         { id: 'showBalance', label: 'Afficher le solde', description: 'Montrer le solde sur l\'écran d\'accueil', type: 'toggle', value: prefs.showBalance, action: () => togglePrivacy('showBalance') },
@@ -254,7 +257,7 @@ export default function Settings() {
       ],
     },
     {
-      title: 'Données',
+      title: t('settings.data'),
       icon: 'folder-outline',
       items: [
         { id: 'export', label: 'Exporter mes données', description: 'Télécharger vos informations', type: 'action', action: handleExportData },
@@ -265,7 +268,7 @@ export default function Settings() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <GradientHeader title="Paramètres" />
+      <GradientHeader title={t('settings.title')} subtitle={t('settings.subtitle')} />
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
 

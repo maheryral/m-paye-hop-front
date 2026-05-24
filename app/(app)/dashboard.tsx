@@ -16,11 +16,13 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import NotificationBadge from '../../src/components/NotificationBadge';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useNavigation } from 'expo-router';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useWallet } from '../../src/contexts/WalletContext';
 import { useTheme } from '../../src/contexts/ThemeContext';
+import { useLocale } from '../../src/contexts/LocaleContext';
 import * as Location from 'expo-location';
 
 const screenWidth = Dimensions.get('window').width;
@@ -59,6 +61,7 @@ export default function Dashboard() {
   const { user } = useAuth();
   const { balance, fetchBalance } = useWallet();
   const { colors } = useTheme();
+  const { t, formatCurrency } = useLocale();
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
   const [activeBottomTab, setActiveBottomTab] = useState('home');
@@ -233,7 +236,7 @@ export default function Dashboard() {
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 0 }]}>
-          Vos avantages M'Paye
+          {t('dashboard.advantages')}
         </Text>
       </View>
 
@@ -253,7 +256,7 @@ export default function Dashboard() {
             <Ionicons name="cash" size={22} color="#fff" />
           </View>
           <Text style={styles.promoBadge}>5%</Text>
-          <Text style={styles.promoTitle}>Cashback</Text>
+          <Text style={styles.promoTitle}>{t('dashboard.cashback')}</Text>
           <Text style={styles.promoSubtitle}>
             5% remboursés sur chaque paiement marchand
           </Text>
@@ -270,7 +273,7 @@ export default function Dashboard() {
             <Ionicons name="send" size={22} color="#fff" />
           </View>
           <Text style={styles.promoBadge}>0 Ar</Text>
-          <Text style={styles.promoTitle}>Transferts gratuits</Text>
+          <Text style={styles.promoTitle}>{t('dashboard.freeTransfers')}</Text>
           <Text style={styles.promoSubtitle}>
             Aucun frais entre comptes M'Paye
           </Text>
@@ -287,7 +290,7 @@ export default function Dashboard() {
             <Ionicons name="gift" size={22} color="#fff" />
           </View>
           <Text style={styles.promoBadge}>+5 000 Ar</Text>
-          <Text style={styles.promoTitle}>Bonus parrainage</Text>
+          <Text style={styles.promoTitle}>{t('dashboard.referral')}</Text>
           <Text style={styles.promoSubtitle}>
             Invitez un proche, gagnez 5 000 Ar
           </Text>
@@ -580,7 +583,7 @@ export default function Dashboard() {
                 onPress={() => router.push('/notifications')}
               >
                 <Ionicons name="notifications-outline" size={20} color="#fff" />
-                <View style={styles.topNotifBadge} />
+                <NotificationBadge size={18} borderColor="#1e40af" />
               </TouchableOpacity>
             </View>
 
@@ -590,7 +593,7 @@ export default function Dashboard() {
                 <View style={styles.balancePreviewRow}>
                   <Text style={styles.balancePreviewLabel}>Solde:</Text>
                   <Text style={styles.balancePreviewAmount}>
-                    {showBalance ? `${balance.toLocaleString()} Ar` : '•••••• Ar'}
+                    {showBalance ? formatCurrency(balance) : '••••••'}
                   </Text>
                   <TouchableOpacity onPress={() => setShowBalance(!showBalance)} hitSlop={8}>
                     <Ionicons

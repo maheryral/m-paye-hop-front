@@ -30,7 +30,7 @@ interface Notification {
 export default function Notifications() {
   const router = useRouter();
   const { colors } = useTheme();
-  const { onNotification } = useSocket();
+  const { onNotification, refreshUnreadCount } = useSocket();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -116,6 +116,7 @@ export default function Notifications() {
       setNotifications(prev =>
         prev.map(n => n.id === id ? { ...n, isRead: true } : n)
       );
+      refreshUnreadCount(); // 🔄 met à jour le badge
     } catch (error) {
       console.error('Erreur marquage lu:', error);
     }
@@ -125,6 +126,7 @@ export default function Notifications() {
     try {
       await notificationService.markAllAsRead();
       setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      refreshUnreadCount();
     } catch (error) {
       console.error('Erreur marquage tout lu:', error);
     }

@@ -17,6 +17,7 @@ import { useTheme } from '../../src/contexts/ThemeContext';
 import { useWallet } from '../../src/contexts/WalletContext';
 import { useSocket } from '../../src/contexts/SocketContext';
 import { useBiometricGuard } from '../../src/contexts/BiometricGuardContext';
+import { useLocale } from '../../src/contexts/LocaleContext';
 import GradientHeader from '../../src/components/GradientHeader';
 import {
   paymentApi,
@@ -80,6 +81,7 @@ export default function Portfolio() {
   const { balance, fetchBalance } = useWallet();
   const { onNotification } = useSocket();
   const { requireBiometric } = useBiometricGuard();
+  const { formatCurrency } = useLocale();
 
   const [tab, setTab] = useState<Tab>('deposit');
   const [method, setMethod] = useState<PaymentRequestMethod | null>(null);
@@ -140,7 +142,7 @@ export default function Portfolio() {
     const a = parseFloat(amount);
     if (!a || a < 100) return 'Montant minimum : 100 Ar';
     if (tab === 'withdraw' && a > balance) {
-      return `Solde insuffisant (${balance.toLocaleString('fr-FR')} Ar disponible)`;
+      return `Solde insuffisant (${formatCurrency(balance)} disponible)`;
     }
     if (!method) return 'Choisissez une méthode';
     if (method === 'MOBILE_MONEY') {
@@ -245,7 +247,7 @@ export default function Portfolio() {
           {/* Solde */}
           <View style={[styles.balanceCard, { backgroundColor: '#1e40af' }]}>
             <Text style={styles.balanceLabel}>Solde disponible</Text>
-            <Text style={styles.balanceAmount}>{formatAmount(balance)} Ar</Text>
+            <Text style={styles.balanceAmount}>{formatCurrency(balance)}</Text>
           </View>
 
           {/* Tabs */}

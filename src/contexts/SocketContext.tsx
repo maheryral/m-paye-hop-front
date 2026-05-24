@@ -11,6 +11,7 @@ import { io, Socket } from 'socket.io-client';
 import { secureStorage } from '../services/secureStorage';
 import { useAuth } from './AuthContext';
 import { API_BASE_URL } from '../config/env';
+import { notificationService } from '../services/api';
 
 export interface RealtimeNotification {
   id: string;
@@ -48,6 +49,8 @@ interface SocketContextType {
   onNotification: (cb: Listener) => () => void;
   /** S'abonner aux nouveaux messages (toute conversation). */
   onMessage: (cb: MessageListener) => () => void;
+  /** Recharger manuellement le compteur unread (après mark-as-read côté front). */
+  refreshUnreadCount: () => Promise<void>;
 }
 
 const Ctx = createContext<SocketContextType | undefined>(undefined);
@@ -80,7 +83,17 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
         reconnectionAttempts: Infinity,
       });
 
-      socket.on('connect', () => setConnected(true));
+      socket.on('connect', () => {
+        setConnected(true);
+        // 🔢 Seed du compteur unread via REST (la WS suivra)
+        notificationService
+          .getUnreadCount()
+          .then((res: any) => {
+            const c = typeof res === 'number' ? res : res?.count ?? 0;
+            setUnreadCount(c);
+          })
+          .catch(() => {});
+      });
       socket.on('disconnect', () => setConnected(false));
       socket.on('connect_error', (err) => {
         // Souvent: token expiré ou backend offline
@@ -132,9 +145,17 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   };
 
+  const refreshUnreadCount = async () => {
+    try {
+      const res: any = await notificationService.getUnreadCount();
+      const c = typeof res === 'number' ? res : res?.count ?? 0;
+      setUnreadCount(c);
+    } catch {}
+  };
+
   return (
     <Ctx.Provider
-      value={{ connected, unreadCount, lastNotification, onNotification, onMessage }}
+      value={{ connected, unreadCount, lastNotification, onNotification, onMessage, refreshUnreadCount }}
     >
       {children}
     </Ctx.Provider>
