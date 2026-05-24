@@ -223,6 +223,51 @@ export const merchantApi = {
     iban?: string;
     bic?: string;
   }) => api.put('/merchant/bank-info', bankInfo),
+
+  // ===== CATALOGUE PRODUITS =====
+  listProducts: (filter?: { active?: boolean; lowStock?: boolean }) =>
+    api.get('/merchant/products', { params: filter }),
+  getProduct: (id: string) => api.get(`/merchant/products/${id}`),
+  createProduct: (data: {
+    name: string;
+    sku?: string;
+    description?: string;
+    category?: string;
+    imageUrl?: string;
+    price: number;
+    currency?: string;
+    taxRate?: number;
+    trackStock?: boolean;
+    stockQuantity?: number;
+    lowStockAlert?: number;
+    isActive?: boolean;
+  }) => api.post('/merchant/products', data),
+  updateProduct: (id: string, data: any) =>
+    api.patch(`/merchant/products/${id}`, data),
+  deleteProduct: (id: string) => api.delete(`/merchant/products/${id}`),
+  adjustStock: (id: string, delta: number, reason?: string) =>
+    api.patch(`/merchant/products/${id}/adjust-stock`, { delta, reason }),
+
+  // ===== REPORTS PRO =====
+  exportCSV: (year?: number, month?: number) =>
+    api.get('/merchant/reports/export-csv', { params: { year, month } }),
+  taxSummary: (year?: number, month?: number) =>
+    api.get('/merchant/reports/tax-summary', { params: { year, month } }),
+  receiptHtml: (transactionId: string) =>
+    api.get(`/merchant/receipts/${transactionId}/html`),
+
+  // ===== EMPLOYÉS =====
+  listEmployees: () => api.get('/merchant/employees'),
+  myRole: () => api.get('/merchant/employees/me/role'),
+  addEmployee: (data: {
+    identifier: string; // email ou téléphone
+    role: 'OWNER' | 'MANAGER' | 'CASHIER' | 'ACCOUNTANT';
+    displayName?: string;
+    internalCode?: string;
+  }) => api.post('/merchant/employees', data),
+  updateEmployeeRole: (id: string, role: 'OWNER' | 'MANAGER' | 'CASHIER' | 'ACCOUNTANT') =>
+    api.patch(`/merchant/employees/${id}/role`, { role }),
+  removeEmployee: (id: string) => api.delete(`/merchant/employees/${id}`),
 };
 
 export default merchantApi;

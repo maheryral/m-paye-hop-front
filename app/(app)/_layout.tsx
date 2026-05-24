@@ -109,6 +109,7 @@ function CustomDrawerContent({ navigation }: any) {
     { name: 'Accueil', route: 'dashboard', icon: 'home-outline', color: '#1e40af' },
     { name: 'Portefeuille', route: 'portfolio', icon: 'wallet-outline', color: '#3b82f6' },
     { name: 'QR Code', route: 'qr-payment', icon: 'qr-code-outline', color: '#1e40af' },
+    { name: 'Recevoir un paiement', route: 'seller-mode', icon: 'cash-outline', color: '#10b981' },
     { name: 'Transferts', route: 'transfers', icon: 'send-outline', color: '#1e40af' },
     { name: 'Taxi-Brousse', route: 'taxi-brousse', icon: 'bus-outline', color: '#1e40af' },
     { name: 'Téléphérique', route: 'telepherique', icon: 'git-network-outline', color: '#0891b2' },
@@ -136,6 +137,8 @@ function CustomDrawerContent({ navigation }: any) {
     { name: 'QR Code', route: 'merchant/qrcode', icon: 'qr-code-outline', color: '#1e40af', section: 'Gestion des ventes' },
     { name: 'Transactions', route: 'merchant/transactions', icon: 'list-outline', color: '#1e40af', section: 'Gestion des ventes' },
     { name: 'Mes boutiques', route: 'merchant/store', icon: 'storefront-outline', color: '#1e40af', section: 'Gestion du commerce' },
+    { name: 'Catalogue produits', route: 'merchant/products', icon: 'cube-outline', color: '#3b82f6', section: 'Gestion du commerce' },
+    { name: 'Équipe', route: 'merchant/employees', icon: 'people-outline', color: '#10b981', section: 'Gestion du commerce' },
     { name: 'Coupons', route: 'merchant/coupons', icon: 'pricetag-outline', color: '#1e40af', section: 'Gestion du commerce' },
     { name: 'Remboursements', route: 'merchant/refunds', icon: 'refresh-outline', color: '#ef4444', section: 'Gestion du commerce' },
     { name: 'Mon solde', route: 'merchant/balance', icon: 'cash-outline', color: '#3b82f6', section: 'Finances' },
@@ -476,11 +479,14 @@ export default function AppLayout() {
       <Drawer.Screen name="admin-payments" options={{ title: 'Validation paiements' }} />
       <Drawer.Screen name="admin-revenue" options={{ title: 'Revenus plateforme' }} />
       <Drawer.Screen name="premium" options={{ title: 'Premium' }} />
+      <Drawer.Screen name="seller-mode" options={{ title: 'Recevoir un paiement' }} />
       <Drawer.Screen name="merchant/dashboard" options={{ title: 'Dashboard' }} />
       <Drawer.Screen name="merchant/scanner" options={{ title: 'Scanner QR' }} />
       <Drawer.Screen name="merchant/qrcode" options={{ title: 'QR Code' }} />
       <Drawer.Screen name="merchant/transactions" options={{ title: 'Transactions' }} />
       <Drawer.Screen name="merchant/store" options={{ title: 'Mes boutiques' }} />
+      <Drawer.Screen name="merchant/products" options={{ title: 'Catalogue produits' }} />
+      <Drawer.Screen name="merchant/employees" options={{ title: 'Équipe' }} />
       <Drawer.Screen name="merchant/coupons" options={{ title: 'Coupons' }} />
       <Drawer.Screen name="merchant/refunds" options={{ title: 'Remboursements' }} />
       <Drawer.Screen name="merchant/balance" options={{ title: 'Mon solde' }} />

@@ -15,6 +15,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import { useTheme } from '../../../../src/contexts/ThemeContext';
 import { merchantApi } from '../../../../src/services/merchantApi';
 
@@ -45,6 +47,38 @@ export default function MerchantTransactions() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+
+  /**
+   * 📄 Génère le reçu en PDF via expo-print depuis le HTML retourné par le backend.
+   * Puis ouvre le partage natif (WhatsApp, Email, etc.)
+   */
+  const generateReceiptPdf = async (transactionId: string) => {
+    setGeneratingPdf(true);
+    try {
+      const res = await merchantApi.receiptHtml(transactionId);
+      const html = res.data?.html;
+      if (!html) {
+        Alert.alert('Erreur', 'Reçu indisponible');
+        return;
+      }
+      const { uri } = await Print.printToFileAsync({ html, base64: false });
+      const available = await Sharing.isAvailableAsync();
+      if (available) {
+        await Sharing.shareAsync(uri, {
+          mimeType: 'application/pdf',
+          dialogTitle: 'Partager le reçu',
+          UTI: 'com.adobe.pdf',
+        });
+      } else {
+        Alert.alert('PDF généré', `Fichier : ${uri}`);
+      }
+    } catch (e: any) {
+      Alert.alert('Erreur', e?.response?.data?.message || 'Génération PDF impossible');
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
 
   useEffect(() => {
     loadTransactions();
@@ -304,6 +338,24 @@ export default function MerchantTransactions() {
                   <Text style={[styles.refundButtonText, { color: '#ef4444' }]}>Demander un remboursement</Text>
                 </TouchableOpacity>
               )}
+
+              {/* 📄 Générer reçu PDF */}
+              <TouchableOpacity
+                style={[styles.refundButton, { backgroundColor: '#1e40af20' }]}
+                onPress={() => generateReceiptPdf(selectedTransaction.id)}
+                disabled={generatingPdf}
+              >
+                {generatingPdf ? (
+                  <ActivityIndicator size="small" color="#1e40af" />
+                ) : (
+                  <>
+                    <Ionicons name="document-text-outline" size={20} color="#1e40af" />
+                    <Text style={[styles.refundButtonText, { color: '#1e40af' }]}>
+                      Générer reçu PDF
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
 
               <TouchableOpacity
                 style={[styles.closeButton, { backgroundColor: colors.primary }]}

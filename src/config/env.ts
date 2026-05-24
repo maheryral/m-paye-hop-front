@@ -9,7 +9,7 @@
  * En prod, remplacer par l'URL publique HTTPS du backend.
  */
 
-const DEFAULT_API_URL = 'http://192.168.88.19:3000';
+const DEFAULT_API_URL = 'http://192.168.1.11:3000';
 
 export const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL?.trim() || DEFAULT_API_URL;
