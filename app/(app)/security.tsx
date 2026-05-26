@@ -52,7 +52,7 @@ export default function Security() {
   ]);
 
   const [sessions, setSessions] = useState<Session[]>([
-    { id: '1', deviceName: 'iPhone 13 Pro', location: 'Antananarivo, Madagascar', ipAddress: '192.168.1.1', current: true, lastActivity: new Date().toISOString() },
+    { id: '1', deviceName: 'iPhone 13 Pro', location: 'Antananarivo, Madagascar', ipAddress: '192.168.1.176', current: true, lastActivity: new Date().toISOString() },
     { id: '2', deviceName: 'Chrome sur Windows', location: 'Paris, France', ipAddress: '83.123.45.67', current: false, lastActivity: new Date(Date.now() - 86400000).toISOString() },
   ]);
 
@@ -237,7 +237,7 @@ export default function Security() {
               onChangeText={setConfirmPassword}
               secureTextEntry
             />
-          </View>
+          </View> 
 
           <TouchableOpacity
             style={[styles.updateButton, { backgroundColor: colors.primary }]}
