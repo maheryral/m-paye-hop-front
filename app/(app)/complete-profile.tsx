@@ -31,8 +31,8 @@ export default function CompleteProfile() {
   const [showSuccess, setShowSuccess] = useState(false);
 
   const [formData, setFormData] = useState({
-    firstName: user?.firstName || '',
-    lastName: user?.lastName || '',
+    firstName: user?.prenom || '',
+    lastName: user?.nom || '',
     dateOfBirth: '',
     placeOfBirth: '',
     nationality: 'Malagasy',
@@ -78,7 +78,7 @@ export default function CompleteProfile() {
       setSubmitting(false);
       setShowSuccess(true);
       // Mettre à jour l'utilisateur avec les nouvelles infos
-      updateUser({ firstName: formData.firstName, lastName: formData.lastName });
+      updateUser({ prenom: formData.firstName, nom: formData.lastName });
     }, 2000);
   };
 

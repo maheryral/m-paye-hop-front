@@ -466,7 +466,14 @@ function Field({
   keyboardType,
   multiline,
   colors,
-}: any) {
+}: {
+  label: string;
+  value: string;
+  onChange: (t: string) => void;
+  keyboardType?: 'default' | 'numeric' | 'email-address' | 'phone-pad';
+  multiline?: boolean;
+  colors: any;
+}) {
   return (
     <View style={{ marginBottom: 12 }}>
       <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>{label}</Text>

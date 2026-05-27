@@ -17,6 +17,7 @@ import { useTheme } from '../../../../src/contexts/ThemeContext';
 import { useWallet } from '../../../../src/contexts/WalletContext';
 import { useBiometricGuard } from '../../../../src/contexts/BiometricGuardContext';
 import VoyageMap from '../../../../src/components/VoyageMap';
+import SeatPlanView from '../../../../src/components/SeatPlanView';
 import {
   taxiBrousseApi,
   VoyageSearchResult,
@@ -261,59 +262,14 @@ export default function VoyageDetail() {
         </Text>
 
         <View style={[styles.seatMapCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.driverIndicator}>
-            <Ionicons name="person-circle-outline" size={20} color={colors.textSecondary} />
-            <Text style={[styles.driverText, { color: colors.textSecondary }]}>Chauffeur</Text>
-          </View>
-
-          <View style={styles.seatGrid}>
-            {seatMap.seats.map((seat) => {
-              const isSelected = selectedSeat === seat.numPlace;
-              return (
-                <TouchableOpacity
-                  key={seat.numPlace}
-                  style={[
-                    styles.seat,
-                    seat.isReserved
-                      ? styles.seatReserved
-                      : isSelected
-                      ? styles.seatSelected
-                      : { backgroundColor: colors.background, borderColor: '#1e40af' },
-                  ]}
-                  disabled={seat.isReserved}
-                  onPress={() => setSelectedSeat(seat.numPlace)}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    style={[
-                      styles.seatText,
-                      seat.isReserved || isSelected
-                        ? { color: '#fff' }
-                        : { color: colors.text },
-                    ]}
-                  >
-                    {seat.numPlace}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {/* Légende */}
-          <View style={styles.legend}>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: colors.background, borderColor: '#1e40af', borderWidth: 1 }]} />
-              <Text style={[styles.legendText, { color: colors.textSecondary }]}>Libre</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: '#1e40af' }]} />
-              <Text style={[styles.legendText, { color: colors.textSecondary }]}>Sélectionné</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: '#9ca3af' }]} />
-              <Text style={[styles.legendText, { color: colors.textSecondary }]}>Occupé</Text>
-            </View>
-          </View>
+          <SeatPlanView
+            layout={seatMap.layout}
+            seatPositions={seatMap.seatPositions}
+            seats={seatMap.seats}
+            selectedSeat={selectedSeat}
+            onSelectSeat={setSelectedSeat}
+            colors={colors}
+          />
         </View>
       </ScrollView>
 

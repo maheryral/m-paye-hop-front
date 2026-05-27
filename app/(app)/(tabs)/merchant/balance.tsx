@@ -72,7 +72,7 @@ export default function MerchantBalance() {
         available: b.balance ?? 0,
         pending: b.pendingBalance ?? 0,
         totalReceived: b.totalReceived ?? 0,
-        currency: b.currency,
+        currency: (b as any).currency,
       }));
 
       const wData = withdrawalsRes.data;

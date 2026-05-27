@@ -407,7 +407,7 @@ export default function Dashboard() {
         {paymentMethods.map((method) => (
           <TouchableOpacity key={method.id} style={styles.paymentMethodItem}>
             <View style={[styles.paymentIcon, { backgroundColor: `${method.color}20` }]}>
-              <Ionicons name={method.icon} size={24} color={method.color} />
+              <Ionicons name={method.icon as any} size={24} color={method.color} />
             </View>
             <Text style={[styles.paymentName, { color: colors.textSecondary }]}>{method.name}</Text>
           </TouchableOpacity>
@@ -865,17 +865,7 @@ const styles = StyleSheet.create({
   promoTextWrap: {
     flex: 1,
   },
-  promoTitle: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '800',
-    marginBottom: 4,
-  },
-  promoSubtitle: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 12,
-    fontWeight: '500',
-  },
+  // (anciennes définitions promoTitle/promoSubtitle supprimées — voir plus bas)
   promoEmoji: {
     fontSize: 40,
     marginLeft: 12,

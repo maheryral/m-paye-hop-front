@@ -646,7 +646,7 @@ const styles = StyleSheet.create({
   filterLabel: { fontSize: 14, fontWeight: '600', marginBottom: 12, marginTop: 16 },
   statusFilters: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   periodFilters: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  filterButton: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F0F0F0' },
+  filterPill: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F0F0F0' },
   filterButtonText: { fontSize: 13, fontWeight: '500' },
   modalFooter: { flexDirection: 'row', gap: 12, marginTop: 24, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#E0E0E0' },
   resetButton: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center' },

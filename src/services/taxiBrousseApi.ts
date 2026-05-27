@@ -67,12 +67,45 @@ export interface SeatInfo {
   status: string;
 }
 
+/** Types de cellule possibles dans un plan visuel personnalisé. */
+export type SeatCellType =
+  | 'seat'
+  | 'window_seat'
+  | 'vip_seat'
+  | 'accessible_seat'
+  | 'aisle'
+  | 'door'
+  | 'driver'
+  | 'empty'
+  | 'wc';
+
+export interface SeatDeck {
+  deckNumber: number;
+  name?: string;
+  grid: SeatCellType[][];
+}
+
+export interface SeatLayout {
+  decks: SeatDeck[];
+}
+
+export interface SeatPosition {
+  deck: number;
+  row: number;
+  col: number;
+  type: SeatCellType;
+}
+
 export interface SeatMap {
   voyageId: string;
   capacity: number;
   reservedCount: number;
   availableCount: number;
   seats: SeatInfo[];
+  /** Plan visuel personnalisé (null si pas configuré → fallback grille générique) */
+  layout: SeatLayout | null;
+  /** numPlace → coordonnées dans le layout (null si pas de layout) */
+  seatPositions: Record<number, SeatPosition> | null;
 }
 
 export interface Reservation {

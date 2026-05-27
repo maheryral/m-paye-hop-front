@@ -1822,10 +1822,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
-  stationCode: {
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
   passengerModal: {
     width: '90%',
     borderRadius: 16,

@@ -21,7 +21,7 @@ interface Notification {
   id: string;
   title: string;
   message: string;
-  type: 'sale' | 'refund' | 'info' | 'warning' | 'success';
+  type: 'sale' | 'refund' | 'info' | 'warning' | 'success' | 'promotions';
   isRead: boolean;
   createdAt: string;
   data?: any;

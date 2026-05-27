@@ -326,7 +326,7 @@ export default function MerchantWithdraw() {
               >
                 <View style={styles.accountInfo}>
                   <View style={[styles.accountIcon, { backgroundColor: `${getOperatorColor(account.operator)}20` }]}>
-                    <Ionicons name={getOperatorIcon(account.operator)} size={20} color={getOperatorColor(account.operator)} />
+                    <Ionicons name={getOperatorIcon(account.operator) as any} size={20} color={getOperatorColor(account.operator)} />
                   </View>
                   <View>
                     <Text style={[styles.accountBank, { color: colors.text }]}>{account.operator}</Text>
@@ -517,7 +517,7 @@ export default function MerchantWithdraw() {
             ) : selectedMethod === 'mobile_money' && selectedMobile ? (
               <View style={styles.selectedAccount}>
                 <View style={[styles.accountIconSmall, { backgroundColor: `${getOperatorColor(selectedMobile.operator)}20` }]}>
-                  <Ionicons name={getOperatorIcon(selectedMobile.operator)} size={18} color={getOperatorColor(selectedMobile.operator)} />
+                  <Ionicons name={getOperatorIcon(selectedMobile.operator) as any} size={18} color={getOperatorColor(selectedMobile.operator)} />
                 </View>
                 <View>
                   <Text style={[styles.selectedBank, { color: colors.text }]}>{selectedMobile.operator}</Text>
