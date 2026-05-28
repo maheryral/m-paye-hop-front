@@ -1,7 +1,7 @@
 // src/components/VoyageMap.tsx
 // Map taxi-brousse: marker départ (gare), marker arrivée, polyline directe.
 // Si pas de coords arrivée → utilise un mini dictionnaire des villes malgaches.
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform, Linking } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
@@ -91,11 +91,43 @@ export default function VoyageMap({
     return lookupCity(villeArrivee);
   }, [arriveeLat, arriveeLng, villeArrivee]);
 
+  // Route réelle par les routes (OSRM) — sinon ligne droite
+  const [routeCoords, setRouteCoords] = useState<
+    { latitude: number; longitude: number }[]
+  >([]);
+  const [routeKm, setRouteKm] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!depart || !arrivee) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const url = `https://router.project-osrm.org/route/v1/driving/${depart.lng},${depart.lat};${arrivee.lng},${arrivee.lat}?overview=full&geometries=geojson`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (cancelled) return;
+        if (data?.routes?.[0]) {
+          const coords = data.routes[0].geometry.coordinates.map(
+            (c: [number, number]) => ({ latitude: c[1], longitude: c[0] }),
+          );
+          setRouteCoords(coords);
+          setRouteKm(data.routes[0].distance / 1000);
+        }
+      } catch {
+        // garde la ligne droite en fallback
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [depart?.lat, depart?.lng, arrivee?.lat, arrivee?.lng]);
+
   const distance = useMemo(() => {
+    if (routeKm != null) return Math.round(routeKm);
     if (distanceKm) return distanceKm;
     if (depart && arrivee) return Math.round(haversineKm(depart, arrivee));
     return null;
-  }, [depart, arrivee, distanceKm]);
+  }, [depart, arrivee, distanceKm, routeKm]);
 
   if (!depart || !arrivee) {
     return (
@@ -152,12 +184,16 @@ export default function VoyageMap({
           pinColor="#ef4444"
         />
         <Polyline
-          coordinates={[
-            { latitude: depart.lat, longitude: depart.lng },
-            { latitude: arrivee.lat, longitude: arrivee.lng },
-          ]}
+          coordinates={
+            routeCoords.length > 1
+              ? routeCoords
+              : [
+                  { latitude: depart.lat, longitude: depart.lng },
+                  { latitude: arrivee.lat, longitude: arrivee.lng },
+                ]
+          }
           strokeColor="#1e40af"
-          strokeWidth={3}
+          strokeWidth={4}
         />
       </MapView>
 

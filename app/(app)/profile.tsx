@@ -221,8 +221,8 @@ export default function Profile() {
             <Text style={[styles.kycText, { color: colors.textSecondary }]}>
               {lastRejected?.rejectionReason || 'Documents non conformes. Veuillez réessayer.'}
             </Text>
-            <TouchableOpacity onPress={() => router.push('/complete-profile' as any)}>
-              <Text style={[styles.kycLink, { color: '#ef4444' }]}>Soumettre à nouveau →</Text>
+            <TouchableOpacity onPress={() => router.push('/kyc-liveness' as any)}>
+              <Text style={[styles.kycLink, { color: '#ef4444' }]}>📷 Refaire la vérification du visage →</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -243,6 +243,11 @@ export default function Profile() {
           <TouchableOpacity onPress={() => router.push('/complete-profile' as any)}>
             <Text style={[styles.kycLink, { color: colors.primary }]}>
               Compléter mon profil →
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/kyc-liveness' as any)}>
+            <Text style={[styles.kycLink, { color: colors.primary }]}>
+              📷 Vérifier mon visage →
             </Text>
           </TouchableOpacity>
         </View>

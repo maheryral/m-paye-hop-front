@@ -31,13 +31,16 @@ export default function ChatScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const { user } = useAuth();
-  const { onMessage } = useSocket();
+  const { onMessage, onSupportClosed } = useSocket();
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [ratingValue, setRatingValue] = useState(0);
+  const [ratingComment, setRatingComment] = useState('');
+  const [ratingSubmitting, setRatingSubmitting] = useState(false);
   const listRef = useRef<FlatList>(null);
 
   const load = useCallback(async () => {
@@ -78,6 +81,32 @@ export default function ChatScreen() {
     return unsub;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // Fermeture par l'agent → recharge la conversation (déclenche la notation)
+  useEffect(() => {
+    const unsub = onSupportClosed((e) => {
+      if (e.conversationId === id) load();
+    });
+    return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, load]);
+
+  const submitRating = async () => {
+    if (!id || ratingValue < 1 || ratingSubmitting) return;
+    setRatingSubmitting(true);
+    try {
+      const res = await messagingApi.rateConversation(
+        id,
+        ratingValue,
+        ratingComment.trim() || undefined,
+      );
+      setConversation(res.data);
+    } catch (e: any) {
+      // garde l'UI, l'utilisateur peut réessayer
+    } finally {
+      setRatingSubmitting(false);
+    }
+  };
 
   const handleSend = async () => {
     const text = input.trim();
@@ -219,29 +248,83 @@ export default function ChatScreen() {
           />
         )}
 
-        <View style={[styles.inputBar, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
-          <TextInput
-            style={[styles.input, { color: colors.text }]}
-            placeholder="Votre message..."
-            placeholderTextColor={colors.textSecondary}
-            value={input}
-            onChangeText={setInput}
-            multiline
-            maxLength={2000}
-          />
-          <TouchableOpacity
-            style={[styles.sendBtn, { opacity: input.trim() && !sending ? 1 : 0.4 }]}
-            onPress={handleSend}
-            disabled={!input.trim() || sending}
-            activeOpacity={0.8}
-          >
-            {sending ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Ionicons name="send" size={20} color="#fff" />
-            )}
-          </TouchableOpacity>
-        </View>
+        {conversation?.status === 'CLOSED' ? (
+          conversation.rating != null ? (
+            <View style={[styles.ratedBar, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
+              <Text style={{ color: colors.textSecondary, fontSize: 13 }}>
+                Merci ! Vous avez noté{' '}
+              </Text>
+              <Text style={{ color: '#f59e0b', fontSize: 16 }}>
+                {'★'.repeat(conversation.rating)}
+                <Text style={{ color: colors.border }}>
+                  {'★'.repeat(5 - conversation.rating)}
+                </Text>
+              </Text>
+            </View>
+          ) : (
+            <View style={[styles.rateBox, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
+              <Text style={[styles.rateTitle, { color: colors.text }]}>
+                Conversation terminée — notez votre agent
+              </Text>
+              <View style={styles.starsRow}>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <TouchableOpacity key={n} onPress={() => setRatingValue(n)} activeOpacity={0.7}>
+                    <Ionicons
+                      name={n <= ratingValue ? 'star' : 'star-outline'}
+                      size={34}
+                      color="#f59e0b"
+                    />
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <TextInput
+                style={[styles.rateComment, { color: colors.text, borderColor: colors.border }]}
+                placeholder="Commentaire (optionnel)"
+                placeholderTextColor={colors.textSecondary}
+                value={ratingComment}
+                onChangeText={setRatingComment}
+                multiline
+                maxLength={300}
+              />
+              <TouchableOpacity
+                style={[styles.rateSubmit, { opacity: ratingValue >= 1 && !ratingSubmitting ? 1 : 0.4 }]}
+                onPress={submitRating}
+                disabled={ratingValue < 1 || ratingSubmitting}
+                activeOpacity={0.85}
+              >
+                {ratingSubmitting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.rateSubmitText}>Envoyer ma note</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          )
+        ) : (
+          <View style={[styles.inputBar, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
+            <TextInput
+              style={[styles.input, { color: colors.text }]}
+              placeholder="Votre message..."
+              placeholderTextColor={colors.textSecondary}
+              value={input}
+              onChangeText={setInput}
+              multiline
+              maxLength={2000}
+            />
+            <TouchableOpacity
+              style={[styles.sendBtn, { opacity: input.trim() && !sending ? 1 : 0.4 }]}
+              onPress={handleSend}
+              disabled={!input.trim() || sending}
+              activeOpacity={0.8}
+            >
+              {sending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="send" size={20} color="#fff" />
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -304,4 +387,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
+  ratedBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderTopWidth: 1,
+  },
+  rateBox: {
+    padding: 16,
+    borderTopWidth: 1,
+    gap: 10,
+  },
+  rateTitle: { fontSize: 14, fontWeight: '700', textAlign: 'center' },
+  starsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  rateComment: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 44,
+    fontSize: 13,
+  },
+  rateSubmit: {
+    backgroundColor: '#1e40af',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  rateSubmitText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 });

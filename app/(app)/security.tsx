@@ -16,6 +16,7 @@ import { useRouter } from 'expo-router';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import GradientHeader from '../../src/components/GradientHeader';
 import { useAuth } from '../../src/contexts/AuthContext';
+import { authService } from '../../src/services/api';
 
 interface SecurityItem {
   id: string;
@@ -27,12 +28,20 @@ interface SecurityItem {
 }
 
 interface Session {
-  id: string;
+  deviceId: string;
   deviceName: string;
-  location: string;
-  ipAddress: string;
+  deviceType?: string;
+  location?: string | null;
+  ipAddress?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  locationSource?: string | null;
+  os?: string | null;
+  osVersion?: string | null;
+  browser?: string | null;
+  model?: string | null;
   current: boolean;
-  lastActivity: string;
+  lastActivityAt: string;
 }
 
 export default function Security() {
@@ -51,10 +60,24 @@ export default function Security() {
     { id: 'biometric', name: 'Authentification biométrique', description: 'Utilisez votre empreinte digitale ou Face ID', icon: 'finger-print-outline', status: true, action: 'Désactiver' },
   ]);
 
-  const [sessions, setSessions] = useState<Session[]>([
-    { id: '1', deviceName: 'iPhone 13 Pro', location: 'Antananarivo, Madagascar', ipAddress: '192.168.1.12', current: true, lastActivity: new Date().toISOString() },
-    { id: '2', deviceName: 'Chrome sur Windows', location: 'Paris, France', ipAddress: '83.123.45.67', current: false, lastActivity: new Date(Date.now() - 86400000).toISOString() },
-  ]);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+
+  const loadSessions = async () => {
+    setSessionsLoading(true);
+    try {
+      const data = await authService.getSessions();
+      setSessions(Array.isArray(data) ? data : []);
+    } catch {
+      // garde liste vide
+    } finally {
+      setSessionsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSessions();
+  }, []);
 
   const securityScore = 75;
 
@@ -100,7 +123,7 @@ export default function Security() {
     );
   };
 
-  const revokeSession = (sessionId: string) => {
+  const revokeSession = (deviceId: string) => {
     Alert.alert(
       'Déconnexion',
       'Voulez-vous vraiment déconnecter cet appareil ?',
@@ -108,9 +131,14 @@ export default function Security() {
         { text: 'Annuler', style: 'cancel' },
         {
           text: 'Déconnecter',
-          onPress: () => {
-            setSessions(prev => prev.filter(s => s.id !== sessionId));
-            setMessage({ type: 'success', text: 'Appareil déconnecté' });
+          onPress: async () => {
+            try {
+              await authService.revokeDevice(deviceId);
+              setSessions(prev => prev.filter(s => s.deviceId !== deviceId));
+              setMessage({ type: 'success', text: 'Appareil déconnecté' });
+            } catch {
+              setMessage({ type: 'error', text: 'Échec de la déconnexion' });
+            }
             setTimeout(() => setMessage(null), 3000);
           },
         },
@@ -126,9 +154,14 @@ export default function Security() {
         { text: 'Annuler', style: 'cancel' },
         {
           text: 'Déconnecter tous',
-          onPress: () => {
-            setSessions(prev => prev.filter(s => s.current));
-            setMessage({ type: 'success', text: 'Tous les appareils ont été déconnectés' });
+          onPress: async () => {
+            try {
+              await logoutAllDevices();
+              await loadSessions();
+              setMessage({ type: 'success', text: 'Tous les autres appareils ont été déconnectés' });
+            } catch {
+              setMessage({ type: 'error', text: 'Échec' });
+            }
             setTimeout(() => setMessage(null), 3000);
           },
         },
@@ -287,30 +320,61 @@ export default function Security() {
             )}
           </View>
 
-          {sessions.map((session) => (
-            <View key={session.id} style={[styles.sessionCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={styles.sessionInfo}>
-                <View style={styles.sessionDevice}>
-                  <Ionicons name="phone-portrait-outline" size={18} color={colors.textSecondary} />
-                  <Text style={[styles.sessionDeviceName, { color: colors.text }]}>{session.deviceName}</Text>
-                  {session.current && (
-                    <View style={[styles.currentBadge, { backgroundColor: `${colors.success}20` }]}>
-                      <Text style={[styles.currentBadgeText, { color: colors.success }]}>Actuel</Text>
+          {sessionsLoading ? (
+            <ActivityIndicator color={colors.primary} style={{ marginVertical: 16 }} />
+          ) : sessions.length === 0 ? (
+            <Text style={[styles.sessionMeta, { color: colors.textSecondary, textAlign: 'center', marginVertical: 12 }]}>
+              Aucune session active
+            </Text>
+          ) : (
+            sessions.map((session) => {
+              const isMobile =
+                session.deviceType === 'MOBILE' || session.deviceType === 'TABLET';
+              const detail = [
+                session.os && (session.osVersion ? `${session.os} ${session.osVersion}` : session.os),
+                session.browser,
+                session.model,
+              ]
+                .filter(Boolean)
+                .join(' · ');
+              return (
+                <View key={session.deviceId} style={[styles.sessionCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <View style={styles.sessionInfo}>
+                    <View style={styles.sessionDevice}>
+                      <Ionicons
+                        name={isMobile ? 'phone-portrait-outline' : 'desktop-outline'}
+                        size={18}
+                        color={colors.textSecondary}
+                      />
+                      <Text style={[styles.sessionDeviceName, { color: colors.text }]}>{session.deviceName}</Text>
+                      {session.current && (
+                        <View style={[styles.currentBadge, { backgroundColor: `${colors.success}20` }]}>
+                          <Text style={[styles.currentBadgeText, { color: colors.success }]}>Actuel</Text>
+                        </View>
+                      )}
                     </View>
+                    {detail ? (
+                      <Text style={[styles.sessionMeta, { color: colors.textSecondary }]}>{detail}</Text>
+                    ) : null}
+                    <Text style={[styles.sessionLocation, { color: colors.textSecondary }]}>
+                      <Ionicons name="location-outline" size={12} color={colors.textSecondary} />{' '}
+                      {session.location || 'Localisation inconnue'}
+                      {session.locationSource === 'gps' ? ' (GPS)' : ''}
+                    </Text>
+                    <Text style={[styles.sessionMeta, { color: colors.textSecondary }]}>
+                      Dernière activité: {formatDate(session.lastActivityAt)}
+                      {session.ipAddress ? ` • IP: ${session.ipAddress}` : ''}
+                    </Text>
+                  </View>
+                  {!session.current && (
+                    <TouchableOpacity onPress={() => revokeSession(session.deviceId)} style={styles.revokeButton}>
+                      <Ionicons name="log-out-outline" size={18} color={colors.error} />
+                    </TouchableOpacity>
                   )}
                 </View>
-                <Text style={[styles.sessionLocation, { color: colors.textSecondary }]}>{session.location}</Text>
-                <Text style={[styles.sessionMeta, { color: colors.textSecondary }]}>
-                  Dernière activité: {formatDate(session.lastActivity)} • IP: {session.ipAddress}
-                </Text>
-              </View>
-              {!session.current && (
-                <TouchableOpacity onPress={() => revokeSession(session.id)} style={styles.revokeButton}>
-                  <Ionicons name="log-out-outline" size={18} color={colors.error} />
-                </TouchableOpacity>
-              )}
-            </View>
-          ))}
+              );
+            })
+          )}
         </View>
 
         {/* KYC Upgrade */}

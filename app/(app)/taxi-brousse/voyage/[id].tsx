@@ -35,12 +35,19 @@ export default function VoyageDetail() {
   const [loading, setLoading] = useState(true);
   const [voyage, setVoyage] = useState<VoyageSearchResult | null>(null);
   const [seatMap, setSeatMap] = useState<SeatMap | null>(null);
-  const [selectedSeat, setSelectedSeat] = useState<number | null>(null);
+  const [selectedSeats, setSelectedSeats] = useState<number[]>([]);
   const [booking, setBooking] = useState(false);
   const [paying, setPaying] = useState(false);
-  const [reservation, setReservation] = useState<Reservation | null>(null);
+  const [reservations, setReservations] = useState<Reservation[]>([]);
   const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const toggleSeat = (n: number) =>
+    setSelectedSeats((prev) =>
+      prev.includes(n) ? prev.filter((s) => s !== n) : [...prev, n],
+    );
+
+  const totalPrice = voyage ? Number(voyage.prix) * selectedSeats.length : 0;
 
   const loadAll = useCallback(async () => {
     if (!id) return;
@@ -70,14 +77,14 @@ export default function VoyageDetail() {
     new Intl.NumberFormat('fr-FR').format(n) + ' Ar';
 
   const handleBookSeat = async () => {
-    if (!selectedSeat || !voyage) return;
+    if (selectedSeats.length === 0 || !voyage) return;
     setBooking(true);
     try {
-      const response = await taxiBrousseApi.createReservation(
+      const response = await taxiBrousseApi.createReservationBatch(
         voyage.id,
-        selectedSeat,
+        selectedSeats,
       );
-      setReservation(response.data);
+      setReservations(response.data);
       setShowConfirm(true);
     } catch (e: any) {
       Alert.alert(
@@ -92,30 +99,28 @@ export default function VoyageDetail() {
   const handlePay = async (
     mode: 'wallet' | 'cash' | 'mobile_money',
   ) => {
-    if (!reservation) return;
-    if (mode === 'wallet' && balance < Number(reservation.prixPaye)) {
+    if (reservations.length === 0) return;
+    const total = reservations.reduce((s, r) => s + Number(r.prixPaye), 0);
+    if (mode === 'wallet' && balance < total) {
       Alert.alert(
         'Solde insuffisant',
-        `Solde: ${formatPrice(balance)}, requis: ${formatPrice(Number(reservation.prixPaye))}. Rechargez votre wallet d'abord.`,
+        `Solde: ${formatPrice(balance)}, requis: ${formatPrice(total)}. Rechargez votre wallet d'abord.`,
       );
       return;
     }
     if (mode === 'wallet') {
       const ok = await requireBiometric(
-        `Confirmez le paiement de ${formatPrice(Number(reservation.prixPaye))}`,
+        `Confirmez le paiement de ${formatPrice(total)}`,
       );
       if (!ok) return;
     }
     setPaying(true);
     try {
-      const response = await taxiBrousseApi.payReservation(
-        reservation.id,
-        mode,
-      );
-      setReservation(response.data);
+      const ids = reservations.map((r) => r.id);
+      await taxiBrousseApi.payReservationBatch(ids, mode);
       Alert.alert(
         'Paiement réussi ✅',
-        `Réservation confirmée. Code: ${response.data.codeConfirmation}`,
+        `${reservations.length} place(s) confirmée(s) · ${formatPrice(total)}`,
         [
           {
             text: 'Voir mes réservations',
@@ -256,7 +261,10 @@ export default function VoyageDetail() {
         </View>
 
         {/* Sélection siège */}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Sélectionnez votre place</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>
+          Sélectionnez vos places
+          {selectedSeats.length > 0 ? ` (${selectedSeats.length})` : ''}
+        </Text>
         <Text style={[styles.sectionHint, { color: colors.textSecondary }]}>
           {seatMap.availableCount} libres sur {seatMap.capacity} places
         </Text>
@@ -266,8 +274,8 @@ export default function VoyageDetail() {
             layout={seatMap.layout}
             seatPositions={seatMap.seatPositions}
             seats={seatMap.seats}
-            selectedSeat={selectedSeat}
-            onSelectSeat={setSelectedSeat}
+            selectedSeats={selectedSeats}
+            onSelectSeat={toggleSeat}
             colors={colors}
           />
         </View>
@@ -277,24 +285,28 @@ export default function VoyageDetail() {
       <View style={[styles.bottomBar, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
         <View style={{ flex: 1 }}>
           <Text style={[styles.bottomLabel, { color: colors.textSecondary }]}>
-            Place {selectedSeat ?? '—'}
+            {selectedSeats.length > 0
+              ? `Place(s) ${[...selectedSeats].sort((a, b) => a - b).join(', ')}`
+              : 'Aucune place'}
           </Text>
           <Text style={[styles.bottomPrice, { color: colors.text }]}>
-            {formatPrice(voyage.prix)}
+            {formatPrice(totalPrice)}
           </Text>
         </View>
         <TouchableOpacity
           style={[
             styles.bookBtn,
-            (!selectedSeat || booking) && { opacity: 0.5 },
+            (selectedSeats.length === 0 || booking) && { opacity: 0.5 },
           ]}
-          disabled={!selectedSeat || booking}
+          disabled={selectedSeats.length === 0 || booking}
           onPress={handleBookSeat}
         >
           {booking ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.bookBtnText}>Réserver</Text>
+            <Text style={styles.bookBtnText}>
+              Réserver {selectedSeats.length > 0 ? `(${selectedSeats.length})` : ''}
+            </Text>
           )}
         </TouchableOpacity>
       </View>
@@ -307,13 +319,20 @@ export default function VoyageDetail() {
               <Ionicons name="checkmark-circle" size={42} color="#3b82f6" />
             </View>
             <Text style={[styles.modalTitle, { color: colors.text }]}>
-              Place réservée !
+              {reservations.length} place(s) réservée(s) !
             </Text>
             <Text style={[styles.modalCode, { color: '#1e40af' }]}>
-              Code : {reservation?.codeConfirmation}
+              Place(s) :{' '}
+              {reservations
+                .map((r) => r.numPlace)
+                .sort((a, b) => a - b)
+                .join(', ')}
             </Text>
             <Text style={[styles.modalText, { color: colors.textSecondary }]}>
-              Confirmez le paiement pour finaliser. Place {reservation?.numPlace}, {formatPrice(Number(reservation?.prixPaye ?? 0))}
+              Confirmez le paiement pour finaliser ·{' '}
+              {formatPrice(
+                reservations.reduce((s, r) => s + Number(r.prixPaye), 0),
+              )}
             </Text>
 
             <Text style={[styles.modalSection, { color: colors.text }]}>

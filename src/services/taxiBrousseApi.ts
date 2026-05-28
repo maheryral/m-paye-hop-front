@@ -150,6 +150,17 @@ export const taxiBrousseApi = {
   createReservation: (voyageId: string, numPlace: number, prixPaye?: number) =>
     api.post<Reservation>('/reservations', { voyageId, numPlace, prixPaye }),
 
+  createReservationBatch: (
+    voyageId: string,
+    numPlaces: number[],
+    prixPaye?: number,
+  ) =>
+    api.post<Reservation[]>('/reservations/batch', {
+      voyageId,
+      numPlaces,
+      prixPaye,
+    }),
+
   getMyReservations: () => api.get<Reservation[]>('/reservations/me'),
 
   getReservation: (id: string) => api.get<Reservation>(`/reservations/${id}`),
@@ -158,6 +169,15 @@ export const taxiBrousseApi = {
     id: string,
     mode: 'wallet' | 'cash' | 'mobile_money' = 'wallet',
   ) => api.post<Reservation>(`/reservations/${id}/pay`, { mode }),
+
+  payReservationBatch: (
+    reservationIds: string[],
+    mode: 'wallet' | 'cash' | 'mobile_money' = 'wallet',
+  ) =>
+    api.post<{ ok: boolean; count: number; montantTotal: number }>(
+      '/reservations/pay-batch',
+      { reservationIds, mode },
+    ),
 
   cancelReservation: (id: string) =>
     api.patch(`/reservations/${id}/cancel`),

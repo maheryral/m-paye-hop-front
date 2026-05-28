@@ -3,6 +3,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL, REQUEST_TIMEOUT_MS } from '../config/env';
 import { secureStorage, getOrCreateDeviceId } from './secureStorage';
+import { getDeviceHeaders, getCachedGeo } from './deviceMeta';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -22,6 +23,17 @@ api.interceptors.request.use(async (config) => {
   }
   // 🛡️ Identifier de device envoyé sur toutes les requêtes (anti vol de refresh)
   config.headers['x-device-id'] = deviceId;
+  // 📱 Métadonnées device pour identification précise côté serveur
+  try {
+    Object.assign(config.headers, getDeviceHeaders());
+    const geo = getCachedGeo();
+    if (geo) {
+      config.headers['x-geo-lat'] = String(geo.lat);
+      config.headers['x-geo-lng'] = String(geo.lng);
+    }
+  } catch {
+    // headers device optionnels — ne bloque pas la requête
+  }
   return config;
 });
 
@@ -72,6 +84,8 @@ export const authService = {
   register: (data) => api.post('/auth/register', data).then(res => res.data),
   logout: (data) => api.post('/auth/logout', { refreshToken: data }).then(res => res.data),
   logoutAll: () => api.post('/auth/logout-all').then(res => res.data),
+  getSessions: () => api.get('/auth/sessions').then(res => res.data),
+  revokeDevice: (deviceId) => api.post('/auth/sessions/revoke', { deviceId }).then(res => res.data),
   getCurrentUser: () => api.get('/auth/me').then(res => res.data),
   changePassword: (data) => api.post('/auth/change-password', data).then(res => res.data),
 
@@ -82,6 +96,11 @@ export const authService = {
   verifyOTP: (data) => api.post('/auth/verify-otp', data).then(res => res.data),
  initiateRegistration: (data) => api.post('/auth/register/initiate', data).then(res => res.data),
  verifyRegistration: (data) => api.post('/auth/register/verify', data).then(res => res.data),
+};
+
+export const kycService = {
+  status: () => api.get('/kyc/status').then(res => res.data),
+  submitLiveness: (payload) => api.post('/kyc/liveness', payload).then(res => res.data),
 };
 
 export const userPreferencesService = {

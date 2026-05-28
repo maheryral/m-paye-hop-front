@@ -49,6 +49,8 @@ interface SocketContextType {
   onNotification: (cb: Listener) => () => void;
   /** S'abonner aux nouveaux messages (toute conversation). */
   onMessage: (cb: MessageListener) => () => void;
+  /** S'abonner à la fermeture d'une conversation support. */
+  onSupportClosed: (cb: (e: { conversationId: string }) => void) => () => void;
   /** Recharger manuellement le compteur unread (après mark-as-read côté front). */
   refreshUnreadCount: () => Promise<void>;
 }
@@ -62,6 +64,9 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
   const socketRef = useRef<Socket | null>(null);
   const listenersRef = useRef<Set<Listener>>(new Set());
   const msgListenersRef = useRef<Set<MessageListener>>(new Set());
+  const closedListenersRef = useRef<
+    Set<(e: { conversationId: string }) => void>
+  >(new Set());
   const [connected, setConnected] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [lastNotification, setLastNotification] =
@@ -116,6 +121,10 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
         msgListenersRef.current.forEach((cb) => cb(e));
       });
 
+      socket.on('support:closed', (e: { conversationId: string }) => {
+        closedListenersRef.current.forEach((cb) => cb(e));
+      });
+
       socketRef.current = socket;
     };
 
@@ -145,6 +154,13 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   };
 
+  const onSupportClosed = (cb: (e: { conversationId: string }) => void) => {
+    closedListenersRef.current.add(cb);
+    return () => {
+      closedListenersRef.current.delete(cb);
+    };
+  };
+
   const refreshUnreadCount = async () => {
     try {
       const res: any = await notificationService.getUnreadCount();
@@ -155,7 +171,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
 
   return (
     <Ctx.Provider
-      value={{ connected, unreadCount, lastNotification, onNotification, onMessage, refreshUnreadCount }}
+      value={{ connected, unreadCount, lastNotification, onNotification, onMessage, onSupportClosed, refreshUnreadCount }}
     >
       {children}
     </Ctx.Provider>

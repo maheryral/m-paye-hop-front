@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { accountService, authService } from '../services/api';
 import { secureStorage } from '../services/secureStorage';
+import { captureGeoForLogin } from '../services/deviceMeta';
 
 interface User {
   id: string;
@@ -85,6 +86,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const login = async (identifier: string, password: string) => {
+    // 📍 Capture la position (permission demandée ici) pour géolocaliser la connexion
+    await captureGeoForLogin();
     const response = await authService.login({ login: identifier, password });
     if (response?.accessToken && response?.user) {
       await persistSession(response.accessToken, response.refreshToken, response.user);

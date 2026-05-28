@@ -17,7 +17,7 @@ interface Props {
   layout: SeatLayout | null;
   seatPositions: Record<number, SeatPosition> | null;
   seats: SeatInfo[];
-  selectedSeat: number | null;
+  selectedSeats: number[];
   onSelectSeat: (numPlace: number) => void;
   /** Theme colors injectés par le parent. */
   colors: {
@@ -65,7 +65,7 @@ export default function SeatPlanView({
   layout,
   seatPositions,
   seats,
-  selectedSeat,
+  selectedSeats,
   onSelectSeat,
   colors,
 }: Props) {
@@ -74,7 +74,7 @@ export default function SeatPlanView({
     return (
       <FallbackGrid
         seats={seats}
-        selectedSeat={selectedSeat}
+        selectedSeats={selectedSeats}
         onSelectSeat={onSelectSeat}
         colors={colors}
       />
@@ -118,7 +118,9 @@ export default function SeatPlanView({
                           type={cellType}
                           numPlace={numPlace}
                           seat={seat}
-                          isSelected={selectedSeat === numPlace}
+                          isSelected={
+                            numPlace != null && selectedSeats.includes(numPlace)
+                          }
                           onSelect={onSelectSeat}
                           colors={colors}
                         />
@@ -229,12 +231,12 @@ function decorBg(type: SeatCellType): string {
 
 function FallbackGrid({
   seats,
-  selectedSeat,
+  selectedSeats,
   onSelectSeat,
   colors,
 }: {
   seats: SeatInfo[];
-  selectedSeat: number | null;
+  selectedSeats: number[];
   onSelectSeat: (n: number) => void;
   colors: Props['colors'];
 }) {
@@ -247,7 +249,7 @@ function FallbackGrid({
       <View style={styles.fallbackGrid}>
         {seats.map((seat) => {
           const reserved = seat.isReserved;
-          const selected = selectedSeat === seat.numPlace;
+          const selected = selectedSeats.includes(seat.numPlace);
           let bg: string;
           let txt: string;
           if (reserved) {

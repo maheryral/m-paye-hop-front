@@ -32,7 +32,19 @@
     "plugins": [
       "expo-router",
       "expo-splash-screen",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "M'Paye utilise votre position pour sécuriser vos connexions (détection de localisation des connexions) et le service taxi-brousse."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "M'Paye utilise la caméra pour la vérification de votre visage (KYC)."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
