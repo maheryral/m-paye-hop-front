@@ -7,8 +7,6 @@ interface WalletContextType {
   loading: boolean;
   error: string | null;
   fetchBalance: () => Promise<void>;
-  credit: (amount: number, description?: string) => Promise<void>;
-  debit: (amount: number, description?: string) => Promise<void>;
 }
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
@@ -32,26 +30,6 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, []);
 
-  const credit = async (amount: number, description?: string) => {
-    try {
-      await accountService.deposit({ amount, description });
-      setBalance(prev => prev + amount);
-    } catch (error) {
-      console.error('Erreur crédit:', error);
-      throw error;
-    }
-  };
-
-  const debit = async (amount: number, description?: string) => {
-    try {
-      await accountService.withdraw({ amount, description });
-      setBalance(prev => prev - amount);
-    } catch (error) {
-      console.error('Erreur débit:', error);
-      throw error;
-    }
-  };
-
   return (
     <WalletContext.Provider
       value={{
@@ -59,8 +37,6 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         loading,
         error,
         fetchBalance,
-        credit,
-        debit,
       }}
     >
       {children}

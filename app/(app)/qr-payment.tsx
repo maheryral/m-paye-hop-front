@@ -27,7 +27,7 @@ import * as Sharing from 'expo-sharing';
 import { captureRef } from 'react-native-view-shot';
 import QRCode from 'react-native-qrcode-svg';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { transactionService } from '../../src/services/api';
+import { transactionService, qrService } from '../../src/services/api';
 import { useLocale } from '../../src/contexts/LocaleContext';
 import { useSocket } from '../../src/contexts/SocketContext';
 
@@ -52,6 +52,9 @@ export default function QRPayment() {
   const [scanned, setScanned] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successAmount, setSuccessAmount] = useState(0);
+  // QR marchand (Mode A/B) — preview + confirmation avant /qr/pay
+  const [merchantQr, setMerchantQr] = useState<any>(null);
+  const [merchantQrLoading, setMerchantQrLoading] = useState(false);
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const qrCodeRef = useRef<any>(null);
 
@@ -130,14 +133,111 @@ export default function QRPayment() {
     });
   };
 
+  // Détecte une référence de lien de paiement (URL .../pay/<ref> ou JSON)
+  const extractPaymentLinkRef = (raw: string): string | null => {
+    const m = raw.match(/\/pay(?:-link)?\/([^/?#\s]+)/);
+    if (m) return m[1];
+    try {
+      const j = JSON.parse(raw);
+      if (j?.type === 'payment_link' && j?.reference) return j.reference;
+    } catch {
+      // pas du JSON
+    }
+    return null;
+  };
+
+  // Détecte une référence QR marchand simple (format QR-<ts>-<hex>).
+  // Le scanner peut recevoir la ref nue ou en JSON {type:'qr_payment', reference}.
+  const extractMerchantQrRef = (raw: string): string | null => {
+    const trimmed = String(raw).trim();
+    if (/^QR-\d+-[A-F0-9]+$/i.test(trimmed)) return trimmed;
+    try {
+      const j = JSON.parse(trimmed);
+      if (j?.type === 'qr_payment' && typeof j.reference === 'string') {
+        return j.reference;
+      }
+    } catch {
+      // pas du JSON
+    }
+    return null;
+  };
+
+  // Charge le récap d'un QR marchand pour preview (Mode A ou B)
+  const loadMerchantQr = async (reference: string) => {
+    setMerchantQrLoading(true);
+    try {
+      const data = await qrService.info(reference);
+      if (data.statut !== 'PENDING') {
+        Alert.alert('QR invalide', `Ce QR est déjà ${String(data.statut).toLowerCase()}.`);
+        setScanned(false);
+        return;
+      }
+      setMerchantQr(data);
+    } catch (e: any) {
+      Alert.alert('Erreur', e?.response?.data?.message || 'QR introuvable');
+      setScanned(false);
+    } finally {
+      setMerchantQrLoading(false);
+    }
+  };
+
+  // Confirme et exécute le paiement du QR marchand
+  const confirmMerchantQrPayment = async () => {
+    if (!merchantQr) return;
+    if (Number(merchantQr.montant) > balance) {
+      Alert.alert('Solde insuffisant', 'Veuillez recharger votre wallet.');
+      return;
+    }
+    const label = merchantQr.mode === 'DIRECT_MOBILE'
+      ? `Payer ${Number(merchantQr.montant).toLocaleString()} Ar à ${merchantQr.payoutOperatorLabel}`
+      : `Payer ${Number(merchantQr.montant).toLocaleString()} Ar à ${merchantQr.merchant.nom}`;
+    const ok = await requireBiometric(label);
+    if (!ok) return;
+
+    setMerchantQrLoading(true);
+    try {
+      const idem = `qr-${merchantQr.reference}-${Date.now()}`;
+      await qrService.pay(merchantQr.reference, idem);
+      await fetchBalance();
+      const paidAmount = Number(merchantQr.montant);
+      setMerchantQr(null);
+      showSuccessAnimation(paidAmount);
+    } catch (e: any) {
+      Alert.alert('Erreur', e?.response?.data?.message || 'Paiement refusé');
+    } finally {
+      setMerchantQrLoading(false);
+    }
+  };
+
+  const cancelMerchantQr = () => {
+    setMerchantQr(null);
+    setScanned(false);
+  };
+
   // Fonction appelée quand un QR code est scanné
   const handleBarCodeScanned = (result: any) => {
     if (scanned) return;
     setScanned(true);
-    
+
+    const raw = String(result.data ?? '');
+
+    // 1) QR marchand simple (Mode A : payout mobile / Mode B : crédit wallet)
+    const merchantQrRef = extractMerchantQrRef(raw);
+    if (merchantQrRef) {
+      void loadMerchantQr(merchantQrRef);
+      return;
+    }
+
+    // 2) Lien de paiement marchand (POS) → écran de paiement dédié
+    const linkRef = extractPaymentLinkRef(raw);
+    if (linkRef) {
+      router.push({ pathname: '/pay-link', params: { reference: linkRef } } as any);
+      return;
+    }
+
     try {
       const data = JSON.parse(result.data);
-      
+
       if (data.type === 'payment_request' && (data.email || data.telephone)) {
         setScannedData(data);
         setShowPaymentForm(true);
@@ -531,6 +631,115 @@ export default function QRPayment() {
         </View>
       </ScrollView>
 
+      {/* Modal de confirmation paiement QR marchand (Mode A / Mode B) */}
+      <Modal
+        transparent
+        visible={!!merchantQr}
+        animationType="fade"
+        onRequestClose={cancelMerchantQr}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.merchantQrCard, { backgroundColor: colors.card }]}>
+            <View style={styles.merchantQrHeader}>
+              <Ionicons
+                name={merchantQr?.mode === 'DIRECT_MOBILE' ? 'phone-portrait' : 'wallet'}
+                size={28}
+                color={colors.primary}
+              />
+              <Text style={[styles.merchantQrTitle, { color: colors.text }]}>
+                Confirmer le paiement
+              </Text>
+            </View>
+
+            <Text style={[styles.merchantQrAmount, { color: colors.text }]}>
+              {Number(merchantQr?.montant ?? 0).toLocaleString()} {merchantQr?.devise ?? 'Ar'}
+            </Text>
+
+            <View style={[styles.merchantQrDivider, { backgroundColor: colors.border }]} />
+
+            <View style={styles.merchantQrRow}>
+              <Text style={[styles.merchantQrLabel, { color: colors.textSecondary }]}>
+                Bénéficiaire
+              </Text>
+              <Text style={[styles.merchantQrValue, { color: colors.text }]} numberOfLines={1}>
+                {merchantQr?.merchant?.nom ?? 'Marchand'}
+              </Text>
+            </View>
+
+            {merchantQr?.mode === 'DIRECT_MOBILE' && (
+              <>
+                <View style={styles.merchantQrRow}>
+                  <Text style={[styles.merchantQrLabel, { color: colors.textSecondary }]}>
+                    Mode
+                  </Text>
+                  <Text style={[styles.merchantQrValue, { color: colors.primary }]}>
+                    {merchantQr.payoutOperatorLabel}
+                  </Text>
+                </View>
+                <View style={styles.merchantQrRow}>
+                  <Text style={[styles.merchantQrLabel, { color: colors.textSecondary }]}>
+                    Numéro
+                  </Text>
+                  <Text style={[styles.merchantQrValue, { color: colors.text }]}>
+                    {merchantQr.payoutPhoneMasked}
+                  </Text>
+                </View>
+              </>
+            )}
+
+            {merchantQr?.mode === 'WALLET' && (
+              <View style={styles.merchantQrRow}>
+                <Text style={[styles.merchantQrLabel, { color: colors.textSecondary }]}>
+                  Mode
+                </Text>
+                <Text style={[styles.merchantQrValue, { color: colors.text }]}>
+                  Wallet M'Paye
+                </Text>
+              </View>
+            )}
+
+            {merchantQr?.description ? (
+              <View style={styles.merchantQrRow}>
+                <Text style={[styles.merchantQrLabel, { color: colors.textSecondary }]}>
+                  Motif
+                </Text>
+                <Text
+                  style={[styles.merchantQrValue, { color: colors.text }]}
+                  numberOfLines={2}
+                >
+                  {merchantQr.description}
+                </Text>
+              </View>
+            ) : null}
+
+            <View style={styles.merchantQrActions}>
+              <TouchableOpacity
+                style={[styles.merchantQrBtn, { borderColor: colors.border }]}
+                onPress={cancelMerchantQr}
+                disabled={merchantQrLoading}
+              >
+                <Text style={{ color: colors.text }}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.merchantQrBtn,
+                  styles.merchantQrBtnConfirm,
+                  { backgroundColor: colors.primary },
+                ]}
+                onPress={confirmMerchantQrPayment}
+                disabled={merchantQrLoading}
+              >
+                {merchantQrLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={{ color: '#fff', fontWeight: '600' }}>Payer</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Modal de succès avec animation */}
       <Modal
         transparent
@@ -657,5 +866,51 @@ const styles = StyleSheet.create({
   successMessage: {
     fontSize: 14,
     textAlign: 'center',
+  },
+  // Styles confirmation paiement QR marchand (Mode A / B)
+  merchantQrCard: {
+    width: '88%',
+    borderRadius: 20,
+    padding: 20,
+    gap: 10,
+  },
+  merchantQrHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 4,
+  },
+  merchantQrTitle: { fontSize: 16, fontWeight: '600' },
+  merchantQrAmount: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginVertical: 6,
+  },
+  merchantQrDivider: { height: 1, marginVertical: 8 },
+  merchantQrRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 4,
+  },
+  merchantQrLabel: { fontSize: 13 },
+  merchantQrValue: { fontSize: 14, fontWeight: '500', flexShrink: 1, textAlign: 'right' },
+  merchantQrActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
+  merchantQrBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  merchantQrBtnConfirm: {
+    borderColor: 'transparent',
   },
 });

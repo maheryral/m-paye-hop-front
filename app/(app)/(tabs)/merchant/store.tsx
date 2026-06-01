@@ -9,12 +9,14 @@ import {
   RefreshControl,
   Modal,
   TextInput,
+  Switch,
   Alert,
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import * as Location from 'expo-location';
 import { useTheme } from '../../../../src/contexts/ThemeContext';
 import { merchantApi } from '../../../../src/services/merchantApi';
 
@@ -25,6 +27,10 @@ interface Store {
   phone: string;
   email?: string;
   description?: string;
+  latitude?: number;
+  longitude?: number;
+  geofenceEnabled?: boolean;
+  geofenceRadius?: number;
   isActive: boolean;
   createdAt: string;
   qrCode?: string;
@@ -44,7 +50,12 @@ export default function MerchantStore() {
     phone: '',
     email: '',
     description: '',
+    geofenceEnabled: false,
+    geofenceRadius: '200',
+    latitude: '',
+    longitude: '',
   });
+  const [locating, setLocating] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
   const [selectedStore, setSelectedStore] = useState<Store | null>(null);
 
@@ -76,7 +87,17 @@ export default function MerchantStore() {
 
   const handleAddStore = () => {
     setEditingStore(null);
-    setFormData({ name: '', address: '', phone: '', email: '', description: '' });
+    setFormData({
+      name: '',
+      address: '',
+      phone: '',
+      email: '',
+      description: '',
+      geofenceEnabled: false,
+      geofenceRadius: '200',
+      latitude: '',
+      longitude: '',
+    });
     setModalVisible(true);
   };
 
@@ -88,8 +109,35 @@ export default function MerchantStore() {
       phone: store.phone,
       email: store.email || '',
       description: store.description || '',
+      geofenceEnabled: store.geofenceEnabled ?? false,
+      geofenceRadius: String(store.geofenceRadius ?? 200),
+      latitude: store.latitude != null ? String(store.latitude) : '',
+      longitude: store.longitude != null ? String(store.longitude) : '',
     });
     setModalVisible(true);
+  };
+
+  const useMyLocation = async () => {
+    setLocating(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission refusée', 'Activez la localisation pour définir la position de la boutique.');
+        return;
+      }
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      setFormData((f) => ({
+        ...f,
+        latitude: pos.coords.latitude.toFixed(7),
+        longitude: pos.coords.longitude.toFixed(7),
+      }));
+    } catch {
+      Alert.alert('Erreur', 'Impossible de récupérer votre position');
+    } finally {
+      setLocating(false);
+    }
   };
 
   const handleSaveStore = async () => {
@@ -106,6 +154,23 @@ export default function MerchantStore() {
       return;
     }
 
+    const geo = {
+      geofenceEnabled: formData.geofenceEnabled,
+      geofenceRadius: formData.geofenceRadius
+        ? Number(formData.geofenceRadius)
+        : 200,
+      latitude: formData.latitude ? Number(formData.latitude) : undefined,
+      longitude: formData.longitude ? Number(formData.longitude) : undefined,
+    };
+
+    if (geo.geofenceEnabled && (geo.latitude == null || geo.longitude == null)) {
+      Alert.alert(
+        'Position manquante',
+        'Définissez la position de la boutique (« Utiliser ma position ») pour activer le paiement sur place.',
+      );
+      return;
+    }
+
     try {
       if (editingStore) {
         const { data } = await merchantApi.updateStore(editingStore.id, {
@@ -113,6 +178,7 @@ export default function MerchantStore() {
           address: formData.address,
           phone: formData.phone,
           email: formData.email || undefined,
+          ...geo,
         } as any);
         setStores(stores.map(s => (s.id === editingStore.id ? (data as Store) : s)));
         Alert.alert('Succès', 'Boutique modifiée avec succès');
@@ -121,6 +187,8 @@ export default function MerchantStore() {
           name: formData.name,
           address: formData.address,
           phone: formData.phone,
+          email: formData.email || undefined,
+          ...geo,
         });
         setStores([data as Store, ...stores]);
         Alert.alert('Succès', 'Boutique ajoutée avec succès');
@@ -340,6 +408,74 @@ export default function MerchantStore() {
               />
             </View>
 
+            {/* Geofencing */}
+            <View style={[styles.geoSection, { borderTopColor: colors.border }]}>
+              <View style={styles.geoHeader}>
+                <Ionicons name="location" size={18} color={colors.primary} />
+                <Text style={[styles.label, { color: colors.text, marginBottom: 0 }]}>
+                  Paiement sur place (geofencing)
+                </Text>
+              </View>
+              <View style={styles.geoSwitchRow}>
+                <Text style={[styles.detailText, { color: colors.textSecondary, flex: 1 }]}>
+                  Exiger la présence du client pour les liens de cette boutique
+                </Text>
+                <Switch
+                  value={formData.geofenceEnabled}
+                  onValueChange={(v) => setFormData({ ...formData, geofenceEnabled: v })}
+                  trackColor={{ false: '#767577', true: colors.primary }}
+                  thumbColor="#fff"
+                />
+              </View>
+
+              {formData.geofenceEnabled && (
+                <>
+                  <View style={styles.geoRow}>
+                    <TextInput
+                      style={[styles.input, { flex: 1, backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+                      placeholder="Latitude"
+                      placeholderTextColor={colors.textSecondary}
+                      keyboardType="numbers-and-punctuation"
+                      value={formData.latitude}
+                      onChangeText={(t) => setFormData({ ...formData, latitude: t })}
+                    />
+                    <TextInput
+                      style={[styles.input, { flex: 1, backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+                      placeholder="Longitude"
+                      placeholderTextColor={colors.textSecondary}
+                      keyboardType="numbers-and-punctuation"
+                      value={formData.longitude}
+                      onChangeText={(t) => setFormData({ ...formData, longitude: t })}
+                    />
+                  </View>
+                  <View style={styles.geoRow}>
+                    <TouchableOpacity
+                      style={[styles.locBtn, { borderColor: colors.primary }]}
+                      onPress={useMyLocation}
+                      disabled={locating}
+                    >
+                      {locating ? (
+                        <ActivityIndicator size="small" color={colors.primary} />
+                      ) : (
+                        <>
+                          <Ionicons name="locate" size={16} color={colors.primary} />
+                          <Text style={{ color: colors.primary, fontWeight: '600' }}>Ma position</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                    <TextInput
+                      style={[styles.input, { flex: 1, backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+                      placeholder="Rayon (m)"
+                      placeholderTextColor={colors.textSecondary}
+                      keyboardType="numeric"
+                      value={formData.geofenceRadius}
+                      onChangeText={(t) => setFormData({ ...formData, geofenceRadius: t })}
+                    />
+                  </View>
+                </>
+              )}
+            </View>
+
             <TouchableOpacity
               style={[styles.saveButton, { backgroundColor: colors.primary }]}
               onPress={handleSaveStore}
@@ -528,6 +664,11 @@ const styles = StyleSheet.create({
   textArea: { height: 80, textAlignVertical: 'top' },
   saveButton: { paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 20 },
   saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  geoSection: { borderTopWidth: 1, paddingTop: 16, gap: 12 },
+  geoHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  geoSwitchRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  geoRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  locBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
   qrContainer: { alignItems: 'center', padding: 20 },
   qrBox: { padding: 20, borderRadius: 16, marginBottom: 20 },
   qrStoreName: { fontSize: 18, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' },

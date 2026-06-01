@@ -461,7 +461,7 @@ export const MerchantProvider: React.FC<MerchantProviderProps> = ({ children }) 
 
   const withdraw = useCallback(async (amount: number, bankAccountId: string) => {
     try {
-      await merchantApi.withdraw(amount, bankAccountId);
+      await merchantApi.withdraw(amount, { bankAccountId });
       await getBalance();
     } catch (error) {
       console.error('Error withdrawing:', error);

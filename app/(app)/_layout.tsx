@@ -115,6 +115,8 @@ function CustomDrawerContent({ navigation }: any) {
     { name: 'Téléphérique', route: 'telepherique', icon: 'git-network-outline', color: '#0891b2' },
     { name: 'Messages', route: 'messages', icon: 'chatbubbles-outline', color: '#3b82f6' },
     { name: 'Historique', route: 'history', icon: 'time-outline', color: '#64748b' },
+    { name: 'Fidélité', route: 'loyalty', icon: 'gift-outline', color: '#8b5cf6' },
+    { name: 'Mes cartes', route: 'payment-cards', icon: 'card-outline', color: '#3b82f6' },
     { name: 'Factures', route: 'bills', icon: 'document-text-outline', color: '#ef4444' },
     { name: 'Bénéficiaires', route: 'beneficiaries', icon: 'people-outline', color: '#1e40af' },
     { name: 'Premium', route: 'premium', icon: 'star-outline', color: '#3b82f6' },
@@ -135,11 +137,13 @@ function CustomDrawerContent({ navigation }: any) {
     { name: 'Dashboard', route: 'merchant/dashboard', icon: 'stats-chart-outline', color: '#1e40af', section: 'Gestion des ventes' },
     { name: 'Scanner QR', route: 'merchant/scanner', icon: 'scan-outline', color: '#3b82f6', section: 'Gestion des ventes' },
     { name: 'QR Code', route: 'merchant/qrcode', icon: 'qr-code-outline', color: '#1e40af', section: 'Gestion des ventes' },
+    { name: 'Liens de paiement', route: 'merchant/payment-links', icon: 'link-outline', color: '#3b82f6', section: 'Gestion des ventes' },
     { name: 'Transactions', route: 'merchant/transactions', icon: 'list-outline', color: '#1e40af', section: 'Gestion des ventes' },
     { name: 'Mes boutiques', route: 'merchant/store', icon: 'storefront-outline', color: '#1e40af', section: 'Gestion du commerce' },
     { name: 'Catalogue produits', route: 'merchant/products', icon: 'cube-outline', color: '#3b82f6', section: 'Gestion du commerce' },
     { name: 'Équipe', route: 'merchant/employees', icon: 'people-outline', color: '#10b981', section: 'Gestion du commerce' },
     { name: 'Coupons', route: 'merchant/coupons', icon: 'pricetag-outline', color: '#1e40af', section: 'Gestion du commerce' },
+    { name: 'Fidélité', route: 'merchant/loyalty', icon: 'gift-outline', color: '#8b5cf6', section: 'Gestion du commerce' },
     { name: 'Remboursements', route: 'merchant/refunds', icon: 'refresh-outline', color: '#ef4444', section: 'Gestion du commerce' },
     { name: 'Mon solde', route: 'merchant/balance', icon: 'cash-outline', color: '#3b82f6', section: 'Finances' },
     { name: 'Retrait', route: 'merchant/withdraw', icon: 'arrow-down-outline', color: '#1e40af', section: 'Finances' },
@@ -466,9 +470,18 @@ export default function AppLayout() {
       <Drawer.Screen name="dashboard" options={{ title: "M'Paye" }} />
       <Drawer.Screen name="portfolio" options={{ title: 'Portefeuille' }} />
       <Drawer.Screen name="qr-payment" options={{ title: 'QR Code' }} />
+      <Drawer.Screen
+        name="pay-link"
+        options={{ title: 'Paiement', drawerItemStyle: { display: 'none' } }}
+      />
       <Drawer.Screen name="transfers" options={{ title: 'Transferts' }} />
       <Drawer.Screen name="history" options={{ title: 'Historique' }} />
       <Drawer.Screen name="bills" options={{ title: 'Factures' }} />
+      <Drawer.Screen name="loyalty" options={{ title: 'Fidélité' }} />
+      <Drawer.Screen
+        name="payment-cards"
+        options={{ title: 'Mes cartes', drawerItemStyle: { display: 'none' } }}
+      />
       <Drawer.Screen name="beneficiaries" options={{ title: 'Bénéficiaires' }} />
       <Drawer.Screen name="profile" options={{ title: 'Mon Profil' }} />
       <Drawer.Screen name="settings" options={{ title: 'Paramètres' }} />

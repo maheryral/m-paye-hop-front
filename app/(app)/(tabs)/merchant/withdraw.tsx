@@ -14,15 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useTheme } from '../../../../src/contexts/ThemeContext';
-import { merchantApi } from '../../../../src/services/merchantApi';
-
-interface BankAccount {
-  id: string;
-  bankName: string;
-  accountNumber: string;
-  accountHolder: string;
-  isDefault: boolean;
-}
+import { merchantApi, type BankAccount } from '../../../../src/services/merchantApi';
 
 interface MobileMoneyAccount {
   id: string;
@@ -44,27 +36,55 @@ export default function MerchantWithdraw() {
   const [showAccounts, setShowAccounts] = useState(false);
   const [showMobileAccounts, setShowMobileAccounts] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [balance, setBalance] = useState(150000);
+  const [balance, setBalance] = useState(0);
   const [fee, setFee] = useState(0);
   const [netAmount, setNetAmount] = useState(0);
 
-  // Comptes bancaires mockés
-  const bankAccounts: BankAccount[] = [
-    {
-      id: '1',
-      bankName: 'BOA Madagascar',
-      accountNumber: '1234 5678 9012 3456',
-      accountHolder: 'Jean Rakoto',
-      isDefault: true,
-    },
-    {
-      id: '2',
-      bankName: 'BNI Madagascar',
-      accountNumber: '9876 5432 1098 7654',
-      accountHolder: 'Jean Rakoto',
-      isDefault: false,
-    },
-  ];
+  // Comptes bancaires RÉELS (chargés depuis l'API)
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [showAddAccount, setShowAddAccount] = useState(false);
+  const [newAcct, setNewAcct] = useState({
+    bankName: '',
+    accountHolder: '',
+    accountNumber: '',
+    iban: '',
+  });
+  const [savingAcct, setSavingAcct] = useState(false);
+
+  const loadBankAccounts = async () => {
+    try {
+      const res = await merchantApi.listBankAccounts();
+      const list = Array.isArray(res.data) ? res.data : [];
+      setBankAccounts(list);
+      const def = list.find((a) => a.isDefault) ?? list[0];
+      if (def) setSelectedBank(def);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const handleAddAccount = async () => {
+    if (!newAcct.bankName || !newAcct.accountHolder || !newAcct.accountNumber) {
+      Alert.alert('Erreur', 'Banque, titulaire et numéro de compte requis');
+      return;
+    }
+    setSavingAcct(true);
+    try {
+      await merchantApi.createBankAccount({
+        bankName: newAcct.bankName,
+        accountHolder: newAcct.accountHolder,
+        accountNumber: newAcct.accountNumber,
+        iban: newAcct.iban || undefined,
+      });
+      setNewAcct({ bankName: '', accountHolder: '', accountNumber: '', iban: '' });
+      setShowAddAccount(false);
+      await loadBankAccounts();
+    } catch (e: any) {
+      Alert.alert('Erreur', e?.response?.data?.message || 'Échec');
+    } finally {
+      setSavingAcct(false);
+    }
+  };
 
   // Comptes Mobile Money mockés
   const mobileMoneyAccounts: MobileMoneyAccount[] = [
@@ -109,12 +129,12 @@ export default function MerchantWithdraw() {
   };
 
   useEffect(() => {
-    // Sélectionner le compte par défaut
-    const defaultBank = bankAccounts.find(acc => acc.isDefault);
-    if (defaultBank) setSelectedBank(defaultBank);
-
+    // Comptes Mobile Money : sélection par défaut (mock — hors périmètre)
     const defaultMobile = mobileMoneyAccounts.find(acc => acc.isDefault);
     if (defaultMobile) setSelectedMobile(defaultMobile);
+
+    // Comptes bancaires réels
+    loadBankAccounts();
 
     // Charger le solde disponible
     (async () => {
@@ -191,13 +211,22 @@ export default function MerchantWithdraw() {
           onPress: async () => {
             setLoading(true);
             try {
-              const bankAccountId =
-                selectedMethod === 'bank' && selectedBank
-                  ? selectedBank.id
-                  : selectedMethod === 'mobile_money' && selectedMobile
-                  ? selectedMobile.id
-                  : 'cash';
-              await merchantApi.withdraw(amountNum, bankAccountId);
+              let payload: any;
+              if (selectedMethod === 'bank' && selectedBank) {
+                payload = { bankAccountId: selectedBank.id };
+              } else if (selectedMethod === 'mobile_money' && selectedMobile) {
+                payload = {
+                  bankName: `Mobile Money (${selectedMobile.operator})`,
+                  accountNumber: selectedMobile.phoneNumber,
+                  accountHolder: selectedMobile.holderName,
+                };
+              } else {
+                payload = {
+                  bankName: 'Retrait cash',
+                  accountNumber: 'ESPECES',
+                };
+              }
+              await merchantApi.withdraw(amountNum, payload);
               Alert.alert(
                 'Succès',
                 `Votre demande de retrait a été enregistrée.\n${selectedMethod === 'cash' ? 'Rendez-vous au point de retrait avec votre pièce d\'identité.' : 'Le traitement peut prendre 24-48h.'}`,
@@ -283,9 +312,77 @@ export default function MerchantWithdraw() {
               </TouchableOpacity>
             ))}
 
-            <TouchableOpacity style={[styles.addButton, { borderColor: colors.border }]}>
+            <TouchableOpacity
+              style={[styles.addButton, { borderColor: colors.border }]}
+              onPress={() => {
+                setShowAccounts(false);
+                setShowAddAccount(true);
+              }}
+            >
               <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
               <Text style={[styles.addButtonText, { color: colors.primary }]}>Ajouter un compte bancaire</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  // Modal d'ajout d'un compte bancaire
+  const AddAccountModal = () => (
+    <Modal
+      visible={showAddAccount}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setShowAddAccount(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Nouveau compte bancaire</Text>
+            <TouchableOpacity onPress={() => setShowAddAccount(false)}>
+              <Ionicons name="close" size={24} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <TextInput
+              style={[styles.acctInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+              placeholder="Banque *"
+              placeholderTextColor={colors.textSecondary}
+              value={newAcct.bankName}
+              onChangeText={(t) => setNewAcct({ ...newAcct, bankName: t })}
+            />
+            <TextInput
+              style={[styles.acctInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+              placeholder="Titulaire du compte *"
+              placeholderTextColor={colors.textSecondary}
+              value={newAcct.accountHolder}
+              onChangeText={(t) => setNewAcct({ ...newAcct, accountHolder: t })}
+            />
+            <TextInput
+              style={[styles.acctInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+              placeholder="Numéro de compte *"
+              placeholderTextColor={colors.textSecondary}
+              value={newAcct.accountNumber}
+              onChangeText={(t) => setNewAcct({ ...newAcct, accountNumber: t })}
+            />
+            <TextInput
+              style={[styles.acctInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+              placeholder="IBAN (optionnel)"
+              placeholderTextColor={colors.textSecondary}
+              value={newAcct.iban}
+              onChangeText={(t) => setNewAcct({ ...newAcct, iban: t })}
+            />
+            <TouchableOpacity
+              style={[styles.submitButton, { backgroundColor: colors.primary, marginHorizontal: 0 }]}
+              onPress={handleAddAccount}
+              disabled={savingAcct}
+            >
+              {savingAcct ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.submitButtonText}>Enregistrer le compte</Text>
+              )}
             </TouchableOpacity>
           </ScrollView>
         </View>
@@ -618,6 +715,7 @@ export default function MerchantWithdraw() {
       </View>
 
       <BankAccountModal />
+      <AddAccountModal />
       <MobileMoneyModal />
     </ScrollView>
   );
@@ -778,4 +876,12 @@ const styles = StyleSheet.create({
   defaultBadgeText: { fontSize: 10, fontWeight: '500' },
   addButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, borderWidth: 1, borderRadius: 12, marginTop: 16, gap: 8 },
   addButtonText: { fontSize: 14, fontWeight: '500' },
+  acctInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    marginBottom: 12,
+  },
 });

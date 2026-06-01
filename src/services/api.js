@@ -111,8 +111,8 @@ export const userPreferencesService = {
 export const accountService = {
   getBalance: () => api.get('/wallet/balance').then(res => res.data),
   getHistory: (params) => api.get('/wallet/history', { params }).then(res => res.data),
-  deposit: (data) => api.post('/wallet/deposit', data).then(res => res.data),
-  withdraw: (data) => api.post('/wallet/withdraw', data).then(res => res.data),
+  // Dépôts via Stripe (paymentApi) ou validation admin (payment-requests).
+  // Retraits via payment-requests. Les anciens /wallet/{deposit,withdraw} ont été retirés.
   getProfile: () => api.get('/user/profile').then(res => res.data),
   updateProfile: (data) => api.patch('/user/profile', data).then(res => res.data),
 };
@@ -142,6 +142,37 @@ export const beneficiaryService = {
   update: (id, data) => api.patch(`/beneficiaries/${id}`, data).then(res => res.data),
   toggleFavorite: (id) => api.patch(`/beneficiaries/${id}/favorite`).then(res => res.data),
   remove: (id) => api.delete(`/beneficiaries/${id}`).then(res => res.data),
+};
+
+/**
+ * QR de paiement marchand (Mode A : payout direct mobile / Mode B : crédit wallet).
+ *
+ * Endpoints backend correspondants :
+ *  - POST  /qr/generate         (marchand auth)
+ *  - GET   /qr/info/:reference  (public, pour preview avant paiement)
+ *  - POST  /qr/pay/:reference   (payeur auth, idempotency-key header)
+ */
+export const qrService = {
+  // Marchand : génère un QR.
+  //  - montant (obligatoire)
+  //  - description (optionnel)
+  //  - payoutPhone (optionnel) → si renseigné, Mode A (payout direct)
+  generate: ({ montant, description, payoutPhone }) =>
+    api
+      .post('/qr/generate', { montant, description, payoutPhone })
+      .then(res => res.data),
+
+  // Public : preview d'un QR scanné (récap avant confirmation).
+  info: (reference) =>
+    api.get(`/qr/info/${reference}`).then(res => res.data),
+
+  // Payeur : exécute le paiement du QR (1 QR = 1 paiement).
+  pay: (reference, idempotencyKey) =>
+    api
+      .post(`/qr/pay/${reference}`, null, {
+        headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
+      })
+      .then(res => res.data),
 };
 
 export default api;

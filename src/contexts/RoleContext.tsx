@@ -2,8 +2,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { AxiosResponse } from 'axios';
-import { merchantApi } from '../services/merchantApi';
+import { merchantApi, MerchantRole } from '../services/merchantApi';
 import { useAuth } from './AuthContext';
+import { roleHasCapability, MerchantCapability } from '../utils/merchantCaps';
 
 export type Role = 'user' | 'merchant';
 
@@ -34,6 +35,7 @@ export interface MerchantProfile {
 interface MerchantStatusResponse {
   hasMerchant: boolean;
   merchant?: MerchantProfile;
+  role?: MerchantRole | null;
   isActive?: boolean;
   status?: string;
   upgradeRequested?: boolean;
@@ -42,6 +44,8 @@ interface MerchantStatusResponse {
 interface RoleContextType {
   currentRole: Role;
   merchantProfile: MerchantProfile | null;
+  merchantRole: MerchantRole | null;
+  hasMerchantCapability: (cap: MerchantCapability) => boolean;
   hasMerchantAccess: boolean;
   switchRole: (role: Role) => Promise<void>;
   isMerchant: boolean;
@@ -71,6 +75,7 @@ export const RoleProvider: React.FC<RoleProviderProps> = ({ children }) => {
   const { user, isAuthenticated } = useAuth();
   const [currentRole, setCurrentRole] = useState<Role>('user');
   const [merchantProfile, setMerchantProfile] = useState<MerchantProfile | null>(null);
+  const [merchantRole, setMerchantRole] = useState<MerchantRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [upgradeStatus, setUpgradeStatus] = useState<'none' | 'pending' | 'approved' | 'rejected'>('none');
 
@@ -88,6 +93,7 @@ export const RoleProvider: React.FC<RoleProviderProps> = ({ children }) => {
   const checkMerchantStatus = useCallback(async () => {
     if (!isAuthenticated || !user) {
       setMerchantProfile(null);
+      setMerchantRole(null);
       setUpgradeStatus('none');
       return;
     }
@@ -95,9 +101,10 @@ export const RoleProvider: React.FC<RoleProviderProps> = ({ children }) => {
     try {
       const response = await merchantApi.getStatus();
       const statusData = response.data as MerchantStatusResponse;
-      
+
       if (statusData?.hasMerchant && statusData?.merchant) {
         const merchant = statusData.merchant;
+        setMerchantRole(statusData.role ?? 'OWNER');
         setMerchantProfile({
           id: merchant.id || '',
           businessName: merchant.businessName || '',
@@ -131,10 +138,12 @@ export const RoleProvider: React.FC<RoleProviderProps> = ({ children }) => {
         }
       } else {
         setMerchantProfile(null);
+        setMerchantRole(null);
         setUpgradeStatus('none');
       }
     } catch (error) {
       setMerchantProfile(null);
+      setMerchantRole(null);
       setUpgradeStatus('none');
     }
   }, [isAuthenticated, user]);
@@ -179,9 +188,16 @@ export const RoleProvider: React.FC<RoleProviderProps> = ({ children }) => {
     }
   }, [canSwitchToMerchant, currentRole, switchRole]);
 
+  const hasMerchantCapability = useCallback(
+    (cap: MerchantCapability) => roleHasCapability(merchantRole, cap),
+    [merchantRole],
+  );
+
   const value: RoleContextType = {
     currentRole,
     merchantProfile,
+    merchantRole,
+    hasMerchantCapability,
     hasMerchantAccess,
     switchRole,
     isMerchant: currentRole === 'merchant' && canSwitchToMerchant,

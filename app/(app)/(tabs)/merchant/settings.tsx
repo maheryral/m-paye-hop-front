@@ -1,5 +1,5 @@
 // app/(app)/(tabs)/merchant/settings.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useTheme } from '../../../../src/contexts/ThemeContext';
+import { useRole } from '../../../../src/contexts/RoleContext';
+import { merchantApi } from '../../../../src/services/merchantApi';
 
 interface NotificationSettings {
   sales: boolean;
@@ -26,7 +28,9 @@ interface NotificationSettings {
 
 export default function MerchantSettings() {
   const { colors, isDark, toggleTheme } = useTheme();
-  
+  const { hasMerchantCapability } = useRole();
+  const canManageTax = hasMerchantCapability('dashboard');
+
   const [notifications, setNotifications] = useState<NotificationSettings>({
     sales: true,
     refunds: true,
@@ -48,6 +52,59 @@ export default function MerchantSettings() {
     new: '',
     confirm: '',
   });
+
+  // Fiscalité / TVA
+  const [showTaxModal, setShowTaxModal] = useState(false);
+  const [savingTax, setSavingTax] = useState(false);
+  const [taxRate, setTaxRate] = useState('');
+  const [vatNumber, setVatNumber] = useState('');
+  const [taxLoaded, setTaxLoaded] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await merchantApi.getProfile();
+        if (!active) return;
+        setTaxRate(
+          res.data.defaultTaxRate != null ? String(res.data.defaultTaxRate) : '',
+        );
+        setVatNumber(res.data.vatNumber ?? '');
+      } catch {
+        // profil non chargé — on laisse les champs vides
+      } finally {
+        if (active) setTaxLoaded(true);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleSaveTax = async () => {
+    const rate = taxRate.trim() === '' ? 0 : Number(taxRate.replace(',', '.'));
+    if (Number.isNaN(rate) || rate < 0 || rate > 100) {
+      Alert.alert('Erreur', 'Le taux de TVA doit être compris entre 0 et 100.');
+      return;
+    }
+    setSavingTax(true);
+    try {
+      await merchantApi.updateProfile({
+        defaultTaxRate: rate,
+        vatNumber: vatNumber.trim() || undefined,
+      });
+      setTaxRate(String(rate));
+      Alert.alert('Succès', 'Paramètres de TVA mis à jour.');
+      setShowTaxModal(false);
+    } catch (error: any) {
+      Alert.alert(
+        'Erreur',
+        error?.response?.data?.message || 'Impossible de mettre à jour la TVA.',
+      );
+    } finally {
+      setSavingTax(false);
+    }
+  };
 
   const languages = [
     { code: 'fr', name: 'Français', flag: '🇫🇷' },
@@ -313,6 +370,69 @@ export default function MerchantSettings() {
     </Modal>
   );
 
+  const TaxModal = () => (
+    <Modal
+      visible={showTaxModal}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setShowTaxModal(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>TVA & NIF</Text>
+            <TouchableOpacity onPress={() => setShowTaxModal(false)}>
+              <Ionicons name="close" size={24} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.passwordForm}>
+            <Text style={[styles.taxHint, { color: colors.textSecondary }]}>
+              Le taux de TVA par défaut est appliqué à vos encaissements et figure
+              sur les reçus. Le NIF/STAT apparaît sur les documents fiscaux.
+            </Text>
+
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: colors.text }]}>Taux de TVA (%)</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+                keyboardType="decimal-pad"
+                placeholder="0"
+                placeholderTextColor={colors.textSecondary}
+                value={taxRate}
+                onChangeText={setTaxRate}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: colors.text }]}>Numéro fiscal (NIF / STAT)</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+                placeholder="Ex: 1234567890"
+                placeholderTextColor={colors.textSecondary}
+                autoCapitalize="characters"
+                value={vatNumber}
+                onChangeText={setVatNumber}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.modalButton, { backgroundColor: colors.primary }]}
+              onPress={handleSaveTax}
+              disabled={savingTax}
+            >
+              {savingTax ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.modalButtonText}>Enregistrer</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
@@ -406,6 +526,26 @@ export default function MerchantSettings() {
         />
       </View>
 
+      {/* Section Fiscalité */}
+      {canManageTax && (
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Fiscalité</Text>
+          <SettingItem
+            icon="receipt-outline"
+            title="TVA & NIF"
+            onPress={() => setShowTaxModal(true)}
+            rightElement={
+              <View style={styles.rightValue}>
+                <Text style={[styles.rightValueText, { color: colors.textSecondary }]}>
+                  {taxLoaded ? `${taxRate ? Number(taxRate) : 0}%` : '…'}
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+              </View>
+            }
+          />
+        </View>
+      )}
+
       {/* Section Sécurité */}
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Sécurité</Text>
@@ -473,6 +613,7 @@ export default function MerchantSettings() {
       <CurrencyModal />
       <PasswordModal />
       <DeleteModal />
+      <TaxModal />
     </ScrollView>
   );
 }
@@ -555,6 +696,7 @@ const styles = StyleSheet.create({
   modalItemSub: { fontSize: 13, marginRight: 12 },
   
   passwordForm: { gap: 16 },
+  taxHint: { fontSize: 13, lineHeight: 19 },
   inputGroup: { gap: 8 },
   inputLabel: { fontSize: 14, fontWeight: '500' },
   input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12, fontSize: 16 },

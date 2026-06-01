@@ -134,6 +134,20 @@ export default function MerchantLayout() {
       />
 
       <Stack.Screen
+        name="payment-links"
+        options={{
+          title: 'Liens de paiement',
+        }}
+      />
+
+      <Stack.Screen
+        name="loyalty"
+        options={{
+          title: 'Programme de fidélité',
+        }}
+      />
+
+      <Stack.Screen
         name="analytics"
         options={{
           title: 'Statistiques',

@@ -1,4 +1,4 @@
-// app/(app)/portfolio.tsx — Dépôt / Retrait avec PaymentRequest (admin validation + Stripe carte)
+// app/(app)/portfolio.tsx — Dépôt / Retrait avec PaymentRequest (Stripe carte 100% auto)
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
@@ -10,9 +10,15 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import {
+  CardField,
+  useStripe,
+  useConfirmSetupIntent,
+} from '@stripe/stripe-react-native';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import { useWallet } from '../../src/contexts/WalletContext';
 import { useSocket } from '../../src/contexts/SocketContext';
@@ -24,6 +30,8 @@ import {
   PaymentRequest,
   PaymentRequestMethod,
 } from '../../src/services/paymentApi';
+import { cardsApi, type SavedCard } from '../../src/services/cardsApi';
+import { providersApi } from '../../src/services/providersApi';
 
 type Tab = 'deposit' | 'withdraw';
 
@@ -82,6 +90,8 @@ export default function Portfolio() {
   const { onNotification } = useSocket();
   const { requireBiometric } = useBiometricGuard();
   const { formatCurrency } = useLocale();
+  const { confirmPayment } = useStripe();
+  const { confirmSetupIntent } = useConfirmSetupIntent();
 
   const [tab, setTab] = useState<Tab>('deposit');
   const [method, setMethod] = useState<PaymentRequestMethod | null>(null);
@@ -92,6 +102,23 @@ export default function Portfolio() {
   const [requests, setRequests] = useState<PaymentRequest[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Stripe carte : modal de saisie + cartes enregistrées
+  const [cardModal, setCardModal] = useState(false);
+  const [savedCards, setSavedCards] = useState<SavedCard[]>([]);
+  const [useNewCard, setUseNewCard] = useState(false);
+  const [cardComplete, setCardComplete] = useState(false);
+
+  useEffect(() => {
+    cardsApi
+      .list()
+      .then((r) => {
+        const list = Array.isArray(r.data) ? r.data : [];
+        setSavedCards(list);
+        if (list.length === 0) setUseNewCard(true);
+      })
+      .catch(() => setUseNewCard(true));
+  }, []);
 
   const loadRequests = useCallback(async () => {
     try {
@@ -148,6 +175,17 @@ export default function Portfolio() {
     if (method === 'MOBILE_MONEY') {
       if (!details.operator) return 'Choisissez un opérateur';
       if (!details.phoneNumber?.trim()) return 'Numéro mobile money requis';
+      // Validation format Madagascar : 10 chiffres commençant par 032/033/034/038
+      const digits = details.phoneNumber.replace(/\D+/g, '');
+      const normalized = digits.startsWith('00261')
+        ? digits.slice(5)
+        : digits.startsWith('261')
+          ? digits.slice(3)
+          : digits;
+      const final = normalized.length === 9 ? '0' + normalized : normalized;
+      if (!/^0(32|33|34|38)\d{7}$/.test(final)) {
+        return `Numéro invalide. Format attendu : 0343500004 (10 chiffres, préfixe 032/033/034/038)`;
+      }
     }
     if (method === 'BANK') {
       if (!details.bankName?.trim()) return 'Nom de banque requis';
@@ -173,19 +211,67 @@ export default function Portfolio() {
       if (!ok) return;
     }
 
+    // Cas spécial CARD pour dépôt → ouvre la modale Stripe (flux auto)
+    if (tab === 'deposit' && method === 'CARD') {
+      setCardComplete(false);
+      setCardModal(true);
+      return;
+    }
+
+    // Cas spécial MOBILE_MONEY + opérateurs auto (MVola, Airtel)
+    // Le backend attend le verdict opérateur (polling 30s) avant de répondre.
+    const autoOperators: Record<string, { code: string; label: string }> = {
+      mvola: { code: 'MVOLA', label: 'MVola' },
+      airtel: { code: 'AIRTEL_MONEY', label: 'Airtel Money' },
+    };
+    const auto =
+      tab === 'deposit' &&
+      method === 'MOBILE_MONEY' &&
+      details.operator &&
+      autoOperators[details.operator];
+    if (auto) {
+      setSubmitting(true);
+      try {
+        const res = await providersApi.mobileMoneyDeposit(
+          auto.code,
+          amt,
+          details.phoneNumber!.trim(),
+        );
+        const status = res.data.status;
+        if (status === 'SUCCESS') {
+          await fetchBalance();
+          Alert.alert(
+            'Dépôt réussi ✅',
+            `${amt.toLocaleString('fr-FR')} Ar crédités sur votre wallet.\nRéférence : ${res.data.reference}`,
+            [{ text: 'OK', onPress: () => { reset(); loadRequests(); } }],
+          );
+        } else if (status === 'FAILED') {
+          Alert.alert(
+            `Dépôt ${auto.label} refusé ❌`,
+            `${res.data.message ?? auto.label + ' a refusé la transaction.'}\nRéférence : ${res.data.reference}`,
+            [{ text: 'OK', onPress: () => loadRequests() }],
+          );
+        } else {
+          // PENDING (timeout polling)
+          Alert.alert(
+            `En attente ${auto.label} ⏳`,
+            `${res.data.message ?? auto.label + ' met du temps à confirmer.'}\nRéférence : ${res.data.reference}\n\nRefresh dans quelques minutes pour voir le statut final.`,
+            [{ text: 'OK', onPress: () => { reset(); loadRequests(); } }],
+          );
+        }
+      } catch (e: any) {
+        Alert.alert(
+          `Erreur ${auto.label}`,
+          e?.response?.data?.message || e?.message || `Échec dépôt ${auto.label}`,
+        );
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     setSubmitting(true);
     try {
-      // Cas spécial CARD pour dépôt → Stripe
-      if (tab === 'deposit' && method === 'CARD') {
-        const res = await paymentApi.createStripeIntent(amt);
-        Alert.alert(
-          'Paiement Stripe',
-          `Demande créée (${res.data.reference}).\n\nclientSecret: ${res.data.clientSecret?.slice(0, 30)}...\n\nIntégrez @stripe/stripe-react-native pour confirmer la carte côté front.`,
-          [{ text: 'OK', onPress: () => { reset(); loadRequests(); } }],
-        );
-        return;
-      }
-
       // Cas universel → PaymentRequest avec validation admin
       const res = await paymentApi.create({
         type: tab === 'deposit' ? 'DEPOSIT' : 'WITHDRAWAL',
@@ -202,6 +288,55 @@ export default function Portfolio() {
       );
     } catch (e: any) {
       Alert.alert('Erreur', e?.response?.data?.message || 'Échec de la demande');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  /** Dépôt CARTE réel via Stripe (SetupIntent → save → PaymentIntent → confirm → crédit). */
+  const doCardDeposit = async (amt: number): Promise<string> => {
+    if (!cardComplete) throw new Error('Carte incomplète');
+    const setup = await cardsApi.createSetupIntent();
+    const { setupIntent, error: setupErr } = await confirmSetupIntent(
+      setup.data.clientSecret,
+      { paymentMethodType: 'Card' },
+    );
+    if (setupErr) throw new Error(setupErr.message || 'Échec enregistrement carte');
+    const pmId = setupIntent?.paymentMethod?.id;
+    if (!pmId) throw new Error('Carte non tokenisée');
+    try { await cardsApi.saveCard(pmId); } catch {}
+    const intent = await paymentApi.createStripeIntent(amt);
+    const clientSecret = intent.data.clientSecret;
+    if (!clientSecret) throw new Error('Pas de clientSecret');
+    const { paymentIntent, error } = await confirmPayment(clientSecret, {
+      paymentMethodType: 'Card',
+      paymentMethodData: { paymentMethodId: pmId } as any,
+    });
+    if (error) throw new Error(error.message || 'Paiement refusé');
+    if (paymentIntent?.status !== 'Succeeded') {
+      throw new Error(`Statut Stripe: ${paymentIntent?.status ?? 'inconnu'}`);
+    }
+    const confirmed = await paymentApi.confirmStripeDeposit(
+      intent.data.paymentRequestId,
+    );
+    return confirmed.data.reference;
+  };
+
+  const handleCardModalConfirm = async () => {
+    const amt = parseFloat(amount);
+    setSubmitting(true);
+    try {
+      const ref = await doCardDeposit(amt);
+      setCardModal(false);
+      reset();
+      await fetchBalance();
+      await loadRequests();
+      Alert.alert(
+        'Dépôt réussi ✅',
+        `${amt.toLocaleString('fr-FR')} Ar crédités sur votre wallet.\nRéférence : ${ref}`,
+      );
+    } catch (e: any) {
+      Alert.alert('Échec dépôt', e?.message || 'Erreur lors du paiement');
     } finally {
       setSubmitting(false);
     }
@@ -335,10 +470,14 @@ export default function Portfolio() {
                     style={[styles.input, { color: colors.text, borderColor: colors.border }]}
                     value={details.phoneNumber || ''}
                     onChangeText={(t) => setDetails({ ...details, phoneNumber: t })}
-                    placeholder="034 XX XXX XX"
+                    placeholder="0343500004 (sandbox test)"
                     placeholderTextColor={colors.textSecondary}
                     keyboardType="phone-pad"
+                    maxLength={13}
                   />
+                  <Text style={{ color: colors.textSecondary, fontSize: 10, marginTop: 4 }}>
+                    Format : 10 chiffres, préfixe 032/033/034/038. Pour tester MVola sandbox : 0343500004
+                  </Text>
                 </>
               )}
 
@@ -418,6 +557,17 @@ export default function Portfolio() {
                 )}
               </TouchableOpacity>
 
+              {/* Message contextuel pendant l'attente opérateur (peut prendre 30s) */}
+              {submitting &&
+                tab === 'deposit' &&
+                method === 'MOBILE_MONEY' &&
+                (details.operator === 'mvola' || details.operator === 'airtel') && (
+                  <Text style={{ color: '#fbbf24', fontSize: 11, marginTop: 8, textAlign: 'center' }}>
+                    📲 Validez sur votre téléphone (push USSD {details.operator === 'mvola' ? 'MVola' : 'Airtel'})…{'\n'}
+                    Attente du verdict opérateur, peut prendre jusqu'à 30s.
+                  </Text>
+                )}
+
               {tab === 'withdraw' && method === 'CARD' && (
                 <Text style={{ color: '#ef4444', fontSize: 11, marginTop: 8, textAlign: 'center' }}>
                   Retrait par carte non supporté — utilisez Mobile Money ou Bank.
@@ -491,6 +641,118 @@ export default function Portfolio() {
           )}
         </View>
       </ScrollView>
+
+      {/* ─────────── Modal Stripe : dépôt carte 100% auto ─────────── */}
+      <Modal
+        visible={cardModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => !submitting && setCardModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: colors.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                Dépôt par carte — {parseFloat(amount || '0').toLocaleString('fr-FR')} Ar
+              </Text>
+              <TouchableOpacity
+                onPress={() => !submitting && setCardModal(false)}
+                disabled={submitting}
+              >
+                <Ionicons name="close" size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {savedCards.length > 0 && !useNewCard ? (
+              <>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>
+                  CARTE ENREGISTRÉE
+                </Text>
+                {savedCards.map((c) => (
+                  <View
+                    key={c.id}
+                    style={[styles.savedCardRow, { borderColor: colors.border }]}
+                  >
+                    <Ionicons name="card" size={20} color="#3b82f6" />
+                    <Text style={{ color: colors.text, flex: 1 }}>
+                      {c.brand?.toUpperCase()} •••• {c.last4}
+                    </Text>
+                    {c.isDefault && (
+                      <Text style={{ color: colors.textSecondary, fontSize: 11 }}>
+                        défaut
+                      </Text>
+                    )}
+                  </View>
+                ))}
+                <TouchableOpacity onPress={() => setUseNewCard(true)}>
+                  <Text style={{ color: '#3b82f6', fontSize: 13, marginTop: 4 }}>
+                    + Utiliser une nouvelle carte
+                  </Text>
+                </TouchableOpacity>
+                <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 6 }}>
+                  💡 Aujourd'hui on resaisit la carte à chaque dépôt.
+                </Text>
+                <CardField
+                  postalCodeEnabled={false}
+                  placeholders={{ number: '4242 4242 4242 4242' }}
+                  cardStyle={{
+                    backgroundColor: colors.background,
+                    textColor: colors.text,
+                    placeholderColor: colors.textSecondary,
+                    borderColor: colors.border,
+                    borderWidth: 1,
+                    borderRadius: 12,
+                  }}
+                  style={{ width: '100%', height: 50, marginTop: 8 }}
+                  onCardChange={(d) => setCardComplete(d.complete)}
+                />
+              </>
+            ) : (
+              <>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>
+                  SAISISSEZ VOTRE CARTE
+                </Text>
+                <CardField
+                  postalCodeEnabled={false}
+                  placeholders={{ number: '4242 4242 4242 4242' }}
+                  cardStyle={{
+                    backgroundColor: colors.background,
+                    textColor: colors.text,
+                    placeholderColor: colors.textSecondary,
+                    borderColor: colors.border,
+                    borderWidth: 1,
+                    borderRadius: 12,
+                  }}
+                  style={{ width: '100%', height: 50, marginTop: 4 }}
+                  onCardChange={(d) => setCardComplete(d.complete)}
+                />
+                <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 8 }}>
+                  💡 Carte de test : 4242 4242 4242 4242 — date future, CVC 123
+                </Text>
+              </>
+            )}
+
+            <TouchableOpacity
+              style={[
+                styles.modalConfirmBtn,
+                { backgroundColor: '#1e40af' },
+                (!cardComplete || submitting) && { opacity: 0.5 },
+              ]}
+              onPress={handleCardModalConfirm}
+              disabled={!cardComplete || submitting}
+            >
+              {submitting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="lock-closed" size={18} color="#fff" />
+                  <Text style={styles.submitText}>Payer & créditer mon wallet</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -595,4 +857,25 @@ const styles = StyleSheet.create({
     marginTop: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, alignItems: 'center',
   },
   cancelText: { fontSize: 12, fontWeight: '600' },
+
+  modalBackdrop: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center', padding: 20,
+  },
+  modalCard: {
+    borderRadius: 18, padding: 20, gap: 12,
+  },
+  modalHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: 4,
+  },
+  modalTitle: { fontSize: 16, fontWeight: '700', flex: 1, marginRight: 8 },
+  savedCardRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    padding: 12, borderRadius: 12, borderWidth: 1,
+  },
+  modalConfirmBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingVertical: 14, borderRadius: 12, marginTop: 12,
+  },
 });

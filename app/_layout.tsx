@@ -6,6 +6,7 @@ import { View, StatusBar, ActivityIndicator, StyleSheet, Text } from 'react-nati
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import * as SplashScreen from 'expo-splash-screen';
+import { StripeProvider } from '@stripe/stripe-react-native';
 import { ThemeProvider, useTheme } from '../src/contexts/ThemeContext';
 import { AuthProvider } from '../src/contexts/AuthContext';
 import { WalletProvider } from '../src/contexts/WalletContext';
@@ -42,6 +43,10 @@ function ThemedStatusBar() {
 function RootLayoutNav() {
   const { colors } = useTheme();
   const [isReady, setIsReady] = useState(false);
+  // Clé publishable Stripe : config super-admin en priorité, sinon variable d'env
+  const [stripeKey, setStripeKey] = useState<string>(
+    process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '',
+  );
 
   useEffect(() => {
     async function prepare() {
@@ -56,6 +61,21 @@ function RootLayoutNav() {
     }
 
     prepare();
+
+    // Récupère la clé publishable Stripe depuis la config fournisseurs (public)
+    (async () => {
+      try {
+        const { providersApi } = await import('../src/services/providersApi');
+        const { data } = await providersApi.getPublic();
+        const stripe = Array.isArray(data)
+          ? data.find((p) => p.code === 'STRIPE')
+          : null;
+        const pk = stripe?.config?.publishableKey;
+        if (pk) setStripeKey(pk);
+      } catch {
+        // garde la clé d'env par défaut
+      }
+    })();
   }, []);
 
   if (!isReady) {
@@ -66,6 +86,7 @@ function RootLayoutNav() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ThemedStatusBar />
+        <StripeProvider publishableKey={stripeKey}>
         <AuthProvider>
           <LocaleProvider>
           <BiometricGuardProvider>
@@ -92,6 +113,7 @@ function RootLayoutNav() {
           </BiometricGuardProvider>
           </LocaleProvider>
         </AuthProvider>
+        </StripeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

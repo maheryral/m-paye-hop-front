@@ -1,36 +1,95 @@
 // app/(app)/(tabs)/merchant/qrcode.tsx
-import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TouchableOpacity, 
-  TextInput, 
-  ScrollView, 
-  Alert, 
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  ScrollView,
+  Alert,
   Share,
   Modal,
-  ActivityIndicator 
+  ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import QRCode from 'react-native-qrcode-svg';
 import { useTheme } from '../../../../src/contexts/ThemeContext';
+import { useAuth } from '../../../../src/contexts/AuthContext';
+import { merchantApi, type PaymentLink } from '../../../../src/services/merchantApi';
+import { qrService } from '../../../../src/services/api';
 
 export default function MerchantQRCode() {
   const { colors } = useTheme();
+  const { user } = useAuth();
   const [modalVisible, setModalVisible] = useState(false);
   const [qrData, setQrData] = useState({
     title: '',
     amount: '',
     description: '',
   });
-  const [generatedQR, setGeneratedQR] = useState<any>(null);
+  // Lien de paiement réutilisable à montant libre (QR statique du marchand)
+  const [staticLink, setStaticLink] = useState<PaymentLink | null>(null);
+  // Lien à montant figé généré à la demande (QR dynamique)
+  const [dynamicLink, setDynamicLink] = useState<PaymentLink | null>(null);
   const [loading, setLoading] = useState(false);
-  const [staticQR, setStaticQR] = useState(true);
+  const [loadingStatic, setLoadingStatic] = useState(true);
 
-  const formatCurrency = (amount: string) => {
-    return new Intl.NumberFormat('fr-MG').format(parseInt(amount) || 0);
+  // QR simple (Mode A : payout direct mobile / Mode B : crédit wallet M'Paye)
+  const [simpleModal, setSimpleModal] = useState(false);
+  const [simpleData, setSimpleData] = useState({
+    amount: '',
+    description: '',
+    payoutPhone: '',
+    useDirectMobile: false, // true → Mode A, false → Mode B
+  });
+  const [simpleQr, setSimpleQr] = useState<{
+    reference: string;
+    montant: number;
+    devise: string;
+    description: string | null;
+    mode: 'DIRECT_MOBILE' | 'WALLET';
+    payoutOperator: string | null;
+    expiration: string;
+  } | null>(null);
+  const [simpleLoading, setSimpleLoading] = useState(false);
+
+  const formatCurrency = (amount: string | number) => {
+    return new Intl.NumberFormat('fr-MG').format(Number(amount) || 0);
   };
+
+  const merchantName = user?.prenom
+    ? `${user.prenom} ${user.nom || ''}`.trim()
+    : 'Marchand M\'Paye';
+
+  // Récupère (ou crée) le lien réutilisable à montant libre du marchand
+  const ensureStaticLink = useCallback(async () => {
+    setLoadingStatic(true);
+    try {
+      const r = await merchantApi.listPaymentLinks('ACTIVE');
+      const list = Array.isArray(r.data) ? r.data : [];
+      const existing = list.find(
+        (l) => l.reusable && l.openAmount && l.status === 'ACTIVE',
+      );
+      if (existing) {
+        setStaticLink(existing);
+        return;
+      }
+      const created = await merchantApi.createPaymentLink({
+        label: 'Paiement QR',
+        reusable: true,
+      });
+      setStaticLink(created.data);
+    } catch (e: any) {
+      console.error('static link:', e?.response?.data || e?.message);
+    } finally {
+      setLoadingStatic(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    ensureStaticLink();
+  }, [ensureStaticLink]);
 
   const generateDynamicQR = async () => {
     if (!qrData.title.trim()) {
@@ -44,26 +103,19 @@ export default function MerchantQRCode() {
 
     setLoading(true);
     try {
-      // Simulation d'appel API pour générer QR code dynamique
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      setGeneratedQR({
-        title: qrData.title,
-        amount: qrData.amount,
-        description: qrData.description,
-        qrData: JSON.stringify({
-          title: qrData.title,
-          amount: qrData.amount,
-          description: qrData.description,
-          merchant: "Ma Boutique",
-          timestamp: new Date().toISOString()
-        })
+      // Crée un vrai lien de paiement à montant figé (usage unique)
+      const created = await merchantApi.createPaymentLink({
+        label: qrData.title,
+        description: qrData.description || undefined,
+        amount: Number(qrData.amount),
+        reusable: false,
       });
-      
-      setStaticQR(false);
-      Alert.alert('Succès', 'QR code généré avec succès');
-    } catch (error) {
-      Alert.alert('Erreur', 'Impossible de générer le QR code');
+      setDynamicLink(created.data);
+    } catch (error: any) {
+      Alert.alert(
+        'Erreur',
+        error?.response?.data?.message || 'Impossible de générer le QR code',
+      );
     } finally {
       setLoading(false);
       setModalVisible(false);
@@ -71,11 +123,13 @@ export default function MerchantQRCode() {
   };
 
   const handleShare = async () => {
+    const link = dynamicLink ?? staticLink;
+    if (!link) return;
     try {
       await Share.share({
-        message: generatedQR 
-          ? `Paiement: ${generatedQR.title}\nMontant: ${formatCurrency(generatedQR.amount)} Ar\n${generatedQR.description || ''}`
-          : 'Mon QR code M\'Paye',
+        message: link.openAmount
+          ? `Payez ${merchantName} via M'Paye : ${link.payUrl}`
+          : `Payez ${formatCurrency(link.amount ?? 0)} Ar à ${merchantName} via M'Paye : ${link.payUrl}`,
       });
     } catch (error) {
       console.error('Erreur de partage:', error);
@@ -83,9 +137,83 @@ export default function MerchantQRCode() {
   };
 
   const resetQR = () => {
-    setGeneratedQR(null);
-    setStaticQR(true);
+    setDynamicLink(null);
     setQrData({ title: '', amount: '', description: '' });
+  };
+
+  // Génère un QR simple (Mode A si payoutPhone, Mode B sinon)
+  const generateSimpleQR = async () => {
+    const amount = parseInt(simpleData.amount, 10);
+    if (!amount || amount <= 0) {
+      Alert.alert('Erreur', 'Montant invalide');
+      return;
+    }
+    if (simpleData.useDirectMobile && !simpleData.payoutPhone.trim()) {
+      Alert.alert(
+        'Erreur',
+        'Numéro Mobile Money requis pour le paiement direct',
+      );
+      return;
+    }
+    setSimpleLoading(true);
+    try {
+      const res = await qrService.generate({
+        montant: amount,
+        description: simpleData.description.trim() || undefined,
+        payoutPhone: simpleData.useDirectMobile
+          ? simpleData.payoutPhone.trim()
+          : undefined,
+      });
+      setSimpleQr(res);
+      setSimpleModal(false);
+    } catch (error: any) {
+      Alert.alert(
+        'Erreur',
+        error?.response?.data?.message || 'Impossible de générer le QR',
+      );
+    } finally {
+      setSimpleLoading(false);
+    }
+  };
+
+  const resetSimpleQR = () => {
+    setSimpleQr(null);
+    setSimpleData({
+      amount: '',
+      description: '',
+      payoutPhone: '',
+      useDirectMobile: false,
+    });
+  };
+
+  const shareSimpleQR = async () => {
+    if (!simpleQr) return;
+    try {
+      const modeLabel =
+        simpleQr.mode === 'DIRECT_MOBILE' ? ' (Mobile Money)' : '';
+      await Share.share({
+        message:
+          `${formatCurrency(simpleQr.montant)} Ar à ${merchantName}${modeLabel}\n` +
+          `Scanner le code : ${simpleQr.reference}`,
+      });
+    } catch (e) {
+      console.error('Erreur partage QR simple:', e);
+    }
+  };
+
+  // Détecte l'opérateur depuis le préfixe (032/033/034/038)
+  const previewOperator = (phone: string): string | null => {
+    const digits = phone.replace(/\D+/g, '');
+    let local = digits;
+    if (local.startsWith('00261')) local = local.slice(5);
+    else if (local.startsWith('261')) local = local.slice(3);
+    if (local.startsWith('0')) local = local.slice(1);
+    if (local.length < 2) return null;
+    const p = local.slice(0, 2);
+    if (p === '32' || p === '37') return 'Orange Money';
+    if (p === '33') return 'Airtel Money';
+    if (p === '34' || p === '38') return 'MVola (Yas/Telma)';
+    return null;
   };
 
   return (
@@ -93,51 +221,140 @@ export default function MerchantQRCode() {
       {/* En-tête */}
     
 
-      {/* QR Code Static (par défaut) */}
-      {staticQR && !generatedQR && (
+      {/* QR Code Static (par défaut) — lien réutilisable à montant libre */}
+      {!dynamicLink && (
         <>
           <View style={[styles.qrContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.qrHeader}>
-              <Ionicons name="qr-code" size={180} color={colors.text} />
-            </View>
-            <Text style={[styles.qrTitle, { color: colors.text }]}>QR Code Static</Text>
+            {loadingStatic || !staticLink ? (
+              <View style={{ height: 204, justifyContent: 'center' }}>
+                <ActivityIndicator size="large" color={colors.primary} />
+              </View>
+            ) : (
+              <View style={[styles.qrHeader, { backgroundColor: '#fff', padding: 12, borderRadius: 16 }]}>
+                <QRCode value={staticLink.payUrl} size={180} />
+              </View>
+            )}
+            <Text style={[styles.qrTitle, { color: colors.text }]}>{merchantName}</Text>
             <Text style={[styles.qrSubtext, { color: colors.textSecondary }]}>
-              Scannez ce code pour payer
+              Scannez ce code pour payer (solde ou carte)
             </Text>
             <Text style={[styles.qrAmount, { color: colors.primary }]}>
               Montant libre
             </Text>
           </View>
 
-          <TouchableOpacity 
+          {staticLink && (
+            <View style={styles.actionButtons}>
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}
+                onPress={handleShare}
+              >
+                <Ionicons name="share-outline" size={20} color={colors.text} />
+                <Text style={[styles.actionButtonText, { color: colors.text }]}>Partager</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <TouchableOpacity
             style={[styles.generateButton, { backgroundColor: colors.primary }]}
             onPress={() => setModalVisible(true)}
           >
             <Ionicons name="create-outline" size={20} color="#fff" />
             <Text style={styles.generateButtonText}>Générer un QR dynamique</Text>
           </TouchableOpacity>
+
+          {/* Bouton QR simple — Mode A (mobile direct) ou Mode B (wallet) */}
+          <TouchableOpacity
+            style={[
+              styles.generateButton,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.primary,
+                borderWidth: 1,
+                marginTop: 10,
+              },
+            ]}
+            onPress={() => setSimpleModal(true)}
+          >
+            <Ionicons name="flash-outline" size={20} color={colors.primary} />
+            <Text style={[styles.generateButtonText, { color: colors.primary }]}>
+              QR simple (caissier)
+            </Text>
+          </TouchableOpacity>
         </>
       )}
 
-      {/* QR Code Dynamique Généré */}
-      {generatedQR && (
+      {/* QR simple généré — affichage du résultat */}
+      {simpleQr && (
         <>
           <View style={[styles.qrContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.qrHeader}>
-              <Ionicons name="qr-code" size={180} color={colors.primary} />
+            <View style={[styles.qrHeader, { backgroundColor: '#fff', padding: 12, borderRadius: 16 }]}>
+              <QRCode value={simpleQr.reference} size={180} />
             </View>
-            <Text style={[styles.qrTitle, { color: colors.text }]}>{generatedQR.title}</Text>
+            <Text style={[styles.qrTitle, { color: colors.text }]}>{merchantName}</Text>
             <Text style={[styles.qrAmount, { color: colors.success, fontSize: 24, fontWeight: 'bold' }]}>
-              {formatCurrency(generatedQR.amount)} Ar
+              {formatCurrency(simpleQr.montant)} Ar
             </Text>
-            {generatedQR.description ? (
+            {simpleQr.description ? (
               <Text style={[styles.qrDescription, { color: colors.textSecondary }]}>
-                {generatedQR.description}
+                {simpleQr.description}
               </Text>
             ) : null}
             <View style={styles.qrBadge}>
-              <Ionicons name="time-outline" size={14} color={colors.warning} />
-              <Text style={[styles.qrBadgeText, { color: colors.warning }]}>Valable 24h</Text>
+              <Ionicons
+                name={simpleQr.mode === 'DIRECT_MOBILE' ? 'phone-portrait' : 'wallet'}
+                size={14}
+                color={colors.primary}
+              />
+              <Text style={[styles.qrBadgeText, { color: colors.primary }]}>
+                {simpleQr.mode === 'DIRECT_MOBILE'
+                  ? `Direct → ${simpleQr.payoutOperator ?? 'Mobile Money'}`
+                  : 'Crédit wallet M\'Paye'}
+              </Text>
+            </View>
+            <Text style={[styles.qrSubtext, { color: colors.warning, marginTop: 8, fontSize: 12 }]}>
+              Expire dans 5 minutes
+            </Text>
+          </View>
+
+          <View style={styles.actionButtons}>
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: colors.primary }]}
+              onPress={shareSimpleQR}
+            >
+              <Ionicons name="share-outline" size={20} color="#fff" />
+              <Text style={styles.actionButtonText}>Partager</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}
+              onPress={resetSimpleQR}
+            >
+              <Ionicons name="refresh-outline" size={20} color={colors.text} />
+              <Text style={[styles.actionButtonText, { color: colors.text }]}>Nouveau</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+
+      {/* QR Code Dynamique Généré — lien à montant figé */}
+      {dynamicLink && (
+        <>
+          <View style={[styles.qrContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={[styles.qrHeader, { backgroundColor: '#fff', padding: 12, borderRadius: 16 }]}>
+              <QRCode value={dynamicLink.payUrl} size={180} />
+            </View>
+            <Text style={[styles.qrTitle, { color: colors.text }]}>{dynamicLink.label || 'Paiement'}</Text>
+            <Text style={[styles.qrAmount, { color: colors.success, fontSize: 24, fontWeight: 'bold' }]}>
+              {formatCurrency(dynamicLink.amount ?? 0)} Ar
+            </Text>
+            {dynamicLink.description ? (
+              <Text style={[styles.qrDescription, { color: colors.textSecondary }]}>
+                {dynamicLink.description}
+              </Text>
+            ) : null}
+            <View style={styles.qrBadge}>
+              <Ionicons name="lock-closed-outline" size={14} color={colors.warning} />
+              <Text style={[styles.qrBadgeText, { color: colors.warning }]}>Montant figé</Text>
             </View>
           </View>
 
@@ -222,7 +439,7 @@ export default function MerchantQRCode() {
               <View style={styles.infoBox}>
                 <Ionicons name="information-circle" size={20} color={colors.info} />
                 <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-                  Le QR code généré sera valable 24h et pourra être partagé avec votre client.
+                  Un lien de paiement à montant figé sera créé. Le client le règle par solde ou carte en scannant le QR.
                 </Text>
               </View>
 
@@ -237,6 +454,175 @@ export default function MerchantQRCode() {
                   <>
                     <Ionicons name="qr-code" size={20} color="#fff" />
                     <Text style={styles.submitButtonText}>Générer le QR code</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal QR simple (Mode A direct mobile / Mode B wallet) */}
+      <Modal
+        animationType="slide"
+        transparent
+        visible={simpleModal}
+        onRequestClose={() => setSimpleModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                QR simple
+              </Text>
+              <TouchableOpacity onPress={() => setSimpleModal(false)}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: colors.text }]}>Montant (Ar) *</Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                      color: colors.text,
+                      fontSize: 18,
+                      fontWeight: 'bold',
+                    },
+                  ]}
+                  placeholder="0"
+                  placeholderTextColor={colors.textSecondary}
+                  keyboardType="numeric"
+                  value={simpleData.amount}
+                  onChangeText={(text) => setSimpleData({ ...simpleData, amount: text })}
+                />
+                {simpleData.amount ? (
+                  <Text style={[styles.amountPreview, { color: colors.primary }]}>
+                    {formatCurrency(simpleData.amount)} Ar
+                  </Text>
+                ) : null}
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: colors.text }]}>Description (optionnel)</Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                      color: colors.text,
+                    },
+                  ]}
+                  placeholder="Ex: Boisson, ticket #42…"
+                  placeholderTextColor={colors.textSecondary}
+                  value={simpleData.description}
+                  onChangeText={(text) => setSimpleData({ ...simpleData, description: text })}
+                  maxLength={200}
+                />
+              </View>
+
+              {/* Toggle Mode A / Mode B */}
+              <TouchableOpacity
+                style={[
+                  styles.infoBox,
+                  {
+                    backgroundColor: simpleData.useDirectMobile
+                      ? `${colors.primary}15`
+                      : colors.background,
+                    borderColor: simpleData.useDirectMobile ? colors.primary : colors.border,
+                    borderWidth: 1,
+                    marginBottom: 12,
+                  },
+                ]}
+                onPress={() =>
+                  setSimpleData({
+                    ...simpleData,
+                    useDirectMobile: !simpleData.useDirectMobile,
+                  })
+                }
+              >
+                <Ionicons
+                  name={
+                    simpleData.useDirectMobile
+                      ? 'checkbox'
+                      : 'square-outline'
+                  }
+                  size={22}
+                  color={simpleData.useDirectMobile ? colors.primary : colors.textSecondary}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.infoText, { color: colors.text, fontWeight: '600' }]}>
+                    Recevoir directement sur Mobile Money
+                  </Text>
+                  <Text style={[styles.infoText, { color: colors.textSecondary, fontSize: 12 }]}>
+                    Le paiement va sur votre numéro Orange/Airtel/MVola au lieu du wallet M'Paye
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              {simpleData.useDirectMobile && (
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.label, { color: colors.text }]}>
+                    Numéro Mobile Money *
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: colors.background,
+                        borderColor: colors.border,
+                        color: colors.text,
+                      },
+                    ]}
+                    placeholder="034 12 345 67"
+                    placeholderTextColor={colors.textSecondary}
+                    keyboardType="phone-pad"
+                    value={simpleData.payoutPhone}
+                    onChangeText={(text) =>
+                      setSimpleData({ ...simpleData, payoutPhone: text })
+                    }
+                  />
+                  {simpleData.payoutPhone ? (
+                    <Text
+                      style={[
+                        styles.amountPreview,
+                        {
+                          color: previewOperator(simpleData.payoutPhone)
+                            ? colors.success
+                            : colors.error,
+                        },
+                      ]}
+                    >
+                      {previewOperator(simpleData.payoutPhone) ??
+                        'Préfixe non reconnu (attendu : 032/033/034/038)'}
+                    </Text>
+                  ) : null}
+                </View>
+              )}
+
+              <View style={styles.infoBox}>
+                <Ionicons name="time-outline" size={20} color={colors.info} />
+                <Text style={[styles.infoText, { color: colors.textSecondary }]}>
+                  Ce QR expire dans 5 minutes et ne peut être payé qu'une seule fois.
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.submitButton, { backgroundColor: colors.primary }]}
+                onPress={generateSimpleQR}
+                disabled={simpleLoading}
+              >
+                {simpleLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="qr-code" size={20} color="#fff" />
+                    <Text style={styles.submitButtonText}>Générer le QR</Text>
                   </>
                 )}
               </TouchableOpacity>

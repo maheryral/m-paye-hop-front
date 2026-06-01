@@ -16,6 +16,8 @@ import NotificationBadge from '../../../../src/components/NotificationBadge';
 import { router } from 'expo-router';
 import { LineChart } from 'react-native-chart-kit';
 import { merchantApi } from '../../../../src/services/merchantApi';
+import { useRole } from '../../../../src/contexts/RoleContext';
+import type { MerchantCapability } from '../../../../src/utils/merchantCaps';
 
 const { width } = Dimensions.get('window');
 
@@ -47,6 +49,8 @@ type Tx = {
 
 export default function MerchantDashboard() {
   const insets = useSafeAreaInsets();
+  const { hasMerchantCapability } = useRole();
+  const canViewDashboard = hasMerchantCapability('dashboard');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -62,24 +66,30 @@ export default function MerchantDashboard() {
   const loadAll = useCallback(async () => {
     setError(null);
     try {
-      const [statsRes, chartRes, txRes, balanceRes, profileRes] =
-        await Promise.all([
-          merchantApi.getDashboardStats(),
-          merchantApi.getRevenueChart('week'),
-          merchantApi.getTransactions(1, 6),
-          merchantApi.getBalance(),
-          merchantApi.getProfile(),
-        ]);
-
-      setStats(statsRes.data);
-      setChartData({
-        labels: chartRes.data.labels,
-        data: chartRes.data.datasets.data,
-      });
+      // Toujours accessibles : profil + transactions (capacité 'transactions')
+      const [txRes, profileRes] = await Promise.all([
+        merchantApi.getTransactions(1, 6),
+        merchantApi.getProfile(),
+      ]);
       setTransactions((txRes.data as any).transactions ?? []);
-      setBalance(balanceRes.data.balance ?? 0);
       const bn = (profileRes.data as any)?.businessName as string | undefined;
       setMerchantName(bn ? bn.charAt(0).toUpperCase() : 'M');
+
+      // Vue financière réservée aux rôles disposant de la capacité 'dashboard'
+      // (OWNER / MANAGER / ACCOUNTANT). Un CASHIER ne charge pas ces données.
+      if (canViewDashboard) {
+        const [statsRes, chartRes, balanceRes] = await Promise.all([
+          merchantApi.getDashboardStats(),
+          merchantApi.getRevenueChart('week'),
+          merchantApi.getBalance(),
+        ]);
+        setStats(statsRes.data);
+        setChartData({
+          labels: chartRes.data.labels,
+          data: chartRes.data.datasets.data,
+        });
+        setBalance(balanceRes.data.balance ?? 0);
+      }
     } catch (e: any) {
       console.error('Merchant dashboard load error:', e?.response?.data || e?.message);
       setError(
@@ -90,7 +100,7 @@ export default function MerchantDashboard() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [canViewDashboard]);
 
   useEffect(() => {
     loadAll();
@@ -104,12 +114,21 @@ export default function MerchantDashboard() {
   const formatAmount = (n: number) =>
     new Intl.NumberFormat('fr-FR').format(Math.round(n));
 
-  const actions = [
-    { id: 'paid', label: 'Encaisser', icon: 'arrow-up', route: './qrcode' },
-    { id: 'payout', label: 'Retirer', icon: 'arrow-down', route: './withdraw' },
-    { id: 'integrations', label: 'Coupons', icon: 'pricetag-outline', route: './coupons' },
-    { id: 'more', label: 'Plus', icon: 'ellipsis-horizontal', route: './analytics' },
+  const actions: {
+    id: string;
+    label: string;
+    icon: string;
+    route: string;
+    cap: MerchantCapability;
+  }[] = [
+    { id: 'paid', label: 'Encaisser', icon: 'arrow-up', route: './qrcode', cap: 'collect' },
+    { id: 'links', label: 'Liens', icon: 'link', route: './payment-links', cap: 'collect' },
+    { id: 'payout', label: 'Retirer', icon: 'arrow-down', route: './withdraw', cap: 'withdrawals' },
+    { id: 'integrations', label: 'Coupons', icon: 'pricetag-outline', route: './coupons', cap: 'coupons' },
+    { id: 'more', label: 'Plus', icon: 'ellipsis-horizontal', route: './analytics', cap: 'dashboard' },
   ];
+
+  const visibleActions = actions.filter((a) => hasMerchantCapability(a.cap));
 
   if (loading) {
     return (
@@ -165,44 +184,46 @@ export default function MerchantDashboard() {
           </View>
         )}
 
-        {/* Revenue */}
-        <View style={styles.revenueSection}>
-          <View style={styles.revenueRow}>
-            <Text style={styles.revenueTitle}>Revenu</Text>
-            <Text style={styles.revenueRange}>30 derniers jours</Text>
-          </View>
-          <View style={styles.revenueAmountRow}>
-            <Text style={styles.revenueCurrency}>Ar </Text>
-            <Text style={styles.revenueAmount}>
-              {formatAmount(stats?.monthRevenue ?? 0)}
-            </Text>
-          </View>
+        {/* Revenue — réservé aux rôles avec vue financière (cap 'dashboard') */}
+        {canViewDashboard && (
+          <View style={styles.revenueSection}>
+            <View style={styles.revenueRow}>
+              <Text style={styles.revenueTitle}>Revenu</Text>
+              <Text style={styles.revenueRange}>30 derniers jours</Text>
+            </View>
+            <View style={styles.revenueAmountRow}>
+              <Text style={styles.revenueCurrency}>Ar </Text>
+              <Text style={styles.revenueAmount}>
+                {formatAmount(stats?.monthRevenue ?? 0)}
+              </Text>
+            </View>
 
-          {/* Sous-stats compactes */}
-          <View style={styles.subStatsRow}>
-            <View style={styles.subStat}>
-              <Text style={styles.subStatLabel}>Aujourd'hui</Text>
-              <Text style={styles.subStatValue}>
-                Ar {formatAmount(stats?.todayRevenue ?? 0)}
-              </Text>
-            </View>
-            <View style={styles.subStatDivider} />
-            <View style={styles.subStat}>
-              <Text style={styles.subStatLabel}>Solde</Text>
-              <Text style={styles.subStatValue}>Ar {formatAmount(balance)}</Text>
-            </View>
-            <View style={styles.subStatDivider} />
-            <View style={styles.subStat}>
-              <Text style={styles.subStatLabel}>Trans.</Text>
-              <Text style={styles.subStatValue}>
-                {stats?.totalTransactions ?? 0}
-              </Text>
+            {/* Sous-stats compactes */}
+            <View style={styles.subStatsRow}>
+              <View style={styles.subStat}>
+                <Text style={styles.subStatLabel}>Aujourd'hui</Text>
+                <Text style={styles.subStatValue}>
+                  Ar {formatAmount(stats?.todayRevenue ?? 0)}
+                </Text>
+              </View>
+              <View style={styles.subStatDivider} />
+              <View style={styles.subStat}>
+                <Text style={styles.subStatLabel}>Solde</Text>
+                <Text style={styles.subStatValue}>Ar {formatAmount(balance)}</Text>
+              </View>
+              <View style={styles.subStatDivider} />
+              <View style={styles.subStat}>
+                <Text style={styles.subStatLabel}>Trans.</Text>
+                <Text style={styles.subStatValue}>
+                  {stats?.totalTransactions ?? 0}
+                </Text>
+              </View>
             </View>
           </View>
-        </View>
+        )}
 
         {/* Chart */}
-        {chartData.data.length > 0 && (
+        {canViewDashboard && chartData.data.length > 0 && (
           <View style={styles.chartContainer}>
             <LineChart
               data={{
@@ -241,7 +262,7 @@ export default function MerchantDashboard() {
 
         {/* Actions circulaires */}
         <View style={styles.actionsRow}>
-          {actions.map((action) => (
+          {visibleActions.map((action) => (
             <TouchableOpacity
               key={action.id}
               style={styles.actionItem}

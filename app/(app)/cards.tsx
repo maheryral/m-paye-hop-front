@@ -1,5 +1,5 @@
 // app/(app)/cards.tsx
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -12,8 +12,15 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import {
+  CardField,
+  useStripe,
+  useConfirmSetupIntent,
+} from '@stripe/stripe-react-native';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import { useWallet } from '../../src/contexts/WalletContext';
+import { paymentApi } from '../../src/services/paymentApi';
+import { cardsApi, type SavedCard } from '../../src/services/cardsApi';
 
 interface Method {
   id: string;
@@ -30,6 +37,8 @@ export default function DepositWithdraw() {
   const router = useRouter();
   const { colors } = useTheme();
   const { balance, fetchBalance } = useWallet();
+  const { confirmPayment } = useStripe();
+  const { confirmSetupIntent } = useConfirmSetupIntent();
   const [activeTab, setActiveTab] = useState<'deposit' | 'withdraw'>('deposit');
   const [step, setStep] = useState(1);
   const [selectedMethod, setSelectedMethod] = useState<string | null>(null);
@@ -37,6 +46,21 @@ export default function DepositWithdraw() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [transactionId, setTransactionId] = useState('');
+  // Cartes enregistrées + saisie d'une nouvelle (pour dépôt carte réel Stripe)
+  const [savedCards, setSavedCards] = useState<SavedCard[]>([]);
+  const [useNewCard, setUseNewCard] = useState(false);
+  const [cardComplete, setCardComplete] = useState(false);
+
+  useEffect(() => {
+    cardsApi
+      .list()
+      .then((r) => {
+        const list = Array.isArray(r.data) ? r.data : [];
+        setSavedCards(list);
+        if (list.length === 0) setUseNewCard(true);
+      })
+      .catch(() => setUseNewCard(true));
+  }, []);
 
   const depositMethods: Method[] = [
     { id: 'card', name: 'Carte bancaire', icon: 'card-outline', color: '#3b82f6', fees: '0%', min: 1000, max: 5000000, processingTime: 'Instantané' },
@@ -80,15 +104,70 @@ export default function DepositWithdraw() {
     setStep(3);
   };
 
+  /** Dépôt CARTE réel via Stripe (SetupIntent → save → PaymentIntent → confirm). */
+  const doCardDeposit = async (amt: number): Promise<string> => {
+    if (!cardComplete) {
+      throw new Error('Carte incomplète');
+    }
+    // 1) Tokenise la carte saisie (SetupIntent) + enregistre côté backend
+    const setup = await cardsApi.createSetupIntent();
+    const { setupIntent, error: setupErr } = await confirmSetupIntent(
+      setup.data.clientSecret,
+      { paymentMethodType: 'Card' },
+    );
+    if (setupErr) throw new Error(setupErr.message || 'Échec enregistrement carte');
+    const pmId = setupIntent?.paymentMethod?.id;
+    if (!pmId) throw new Error('Carte non tokenisée');
+    try {
+      await cardsApi.saveCard(pmId);
+    } catch {
+      // pas bloquant
+    }
+    // 2) Crée le PaymentIntent côté backend (customer attaché auto)
+    const intent = await paymentApi.createStripeIntent(amt);
+    const clientSecret = intent.data.clientSecret;
+    if (!clientSecret) throw new Error('Pas de clientSecret');
+    // 3) Confirme la charge côté Stripe
+    const { paymentIntent, error } = await confirmPayment(clientSecret, {
+      paymentMethodType: 'Card',
+      paymentMethodData: { paymentMethodId: pmId } as any,
+    });
+    if (error) throw new Error(error.message || 'Paiement refusé');
+    if (paymentIntent?.status !== 'Succeeded') {
+      throw new Error(`Statut: ${paymentIntent?.status ?? 'inconnu'}`);
+    }
+    // 4) Confirme côté M'Paye → crédite le wallet
+    const confirmed = await paymentApi.confirmStripeDeposit(
+      intent.data.paymentRequestId,
+    );
+    return confirmed.data.reference;
+  };
+
   const handleConfirm = async () => {
     setLoading(true);
-    setTimeout(async () => {
-      const newId = (activeTab === 'deposit' ? 'DEP-' : 'WDR-') + Math.random().toString(36).substr(2, 8).toUpperCase();
+    try {
+      // Dépôt par carte → vrai flux Stripe
+      if (activeTab === 'deposit' && selectedMethod === 'card') {
+        const ref = await doCardDeposit(amountNum);
+        setTransactionId(ref);
+        await fetchBalance();
+        setSuccess(true);
+        return;
+      }
+      // Autres méthodes (mobile money / banque) ou retrait : flux non encore branché
+      // → simulation de l'écran pour permettre les tests UI ; à câbler aux APIs réelles
+      await new Promise((res) => setTimeout(res, 1500));
+      const newId =
+        (activeTab === 'deposit' ? 'DEP-' : 'WDR-') +
+        Math.random().toString(36).slice(2, 10).toUpperCase();
       setTransactionId(newId);
       await fetchBalance();
-      setLoading(false);
       setSuccess(true);
-    }, 2000);
+    } catch (e: any) {
+      Alert.alert('Erreur', e?.response?.data?.message || e?.message || 'Erreur');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleNewTransaction = () => {
@@ -300,6 +379,87 @@ export default function DepositWithdraw() {
                   <Text style={[styles.confirmValue, { color: colors.primary, fontWeight: '700', fontSize: 16 }]}>{totalAmount.toLocaleString()} Ar</Text>
                 </View>
               </View>
+
+              {/* Dépôt par carte : saisie / choix de la carte (Stripe) */}
+              {activeTab === 'deposit' && selectedMethod === 'card' && (
+                <View style={{ gap: 10, marginTop: 4 }}>
+                  {savedCards.length > 0 && !useNewCard ? (
+                    <>
+                      <Text style={[styles.confirmLabel, { color: colors.textSecondary }]}>
+                        Carte enregistrée
+                      </Text>
+                      {savedCards.map((c) => (
+                        <View
+                          key={c.id}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 10,
+                            padding: 12,
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            backgroundColor: colors.background,
+                          }}
+                        >
+                          <Ionicons name="card" size={20} color={colors.primary} />
+                          <Text style={{ color: colors.text, flex: 1 }}>
+                            {c.brand?.toUpperCase()} •••• {c.last4}
+                          </Text>
+                          {c.isDefault && (
+                            <Text style={{ color: colors.textSecondary, fontSize: 11 }}>défaut</Text>
+                          )}
+                        </View>
+                      ))}
+                      <TouchableOpacity onPress={() => setUseNewCard(true)}>
+                        <Text style={{ color: colors.primary, fontSize: 13 }}>
+                          + Utiliser une nouvelle carte
+                        </Text>
+                      </TouchableOpacity>
+                      <Text style={{ color: colors.textSecondary, fontSize: 11 }}>
+                        💡 Aujourd'hui on resaisit la carte à chaque dépôt (renforcement à venir).
+                      </Text>
+                      <CardField
+                        postalCodeEnabled={false}
+                        placeholders={{ number: '4242 4242 4242 4242' }}
+                        cardStyle={{
+                          backgroundColor: colors.background,
+                          textColor: colors.text,
+                          placeholderColor: colors.textSecondary,
+                          borderColor: colors.border,
+                          borderWidth: 1,
+                          borderRadius: 12,
+                        }}
+                        style={{ width: '100%', height: 50 }}
+                        onCardChange={(d) => setCardComplete(d.complete)}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <Text style={[styles.confirmLabel, { color: colors.textSecondary }]}>
+                        Saisis ta carte
+                      </Text>
+                      <CardField
+                        postalCodeEnabled={false}
+                        placeholders={{ number: '4242 4242 4242 4242' }}
+                        cardStyle={{
+                          backgroundColor: colors.background,
+                          textColor: colors.text,
+                          placeholderColor: colors.textSecondary,
+                          borderColor: colors.border,
+                          borderWidth: 1,
+                          borderRadius: 12,
+                        }}
+                        style={{ width: '100%', height: 50 }}
+                        onCardChange={(d) => setCardComplete(d.complete)}
+                      />
+                      <Text style={{ color: colors.textSecondary, fontSize: 11 }}>
+                        💡 Carte de test : 4242 4242 4242 4242 — date future, CVC 123
+                      </Text>
+                    </>
+                  )}
+                </View>
+              )}
 
               <View style={[styles.securityInfo, { backgroundColor: `${colors.info}15`, borderColor: colors.info }]}>
                 <Ionicons name="shield-checkmark-outline" size={18} color={colors.info} />
