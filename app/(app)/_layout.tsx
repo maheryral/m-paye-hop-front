@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { TouchableOpacity, Text, StyleSheet, Alert, View, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/contexts/AuthContext';
+import { secureStorage } from '../../src/services/secureStorage';
 import { useState, useEffect } from 'react';
 
 function CustomDrawerContent({ navigation }: any) {
@@ -72,13 +73,30 @@ function CustomDrawerContent({ navigation }: any) {
       return;
     }
 
+    const merchantId = merchantProfile?.id;
+    if (!merchantId) {
+      Alert.alert('Erreur', 'Profil marchand introuvable.');
+      return;
+    }
+
     setIsSwitching(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 600));
+      // 🔑 Demande au backend un JWT contenant activeMerchantId — nécessaire pour
+      // les routes marchand (génération QR, etc.) qui lisent req.user.activeMerchantId.
+      const { merchantApi } = await import('../../src/services/merchantApi');
+      const res = await merchantApi.switch(merchantId);
+      await Promise.all([
+        secureStorage.setItem('accessToken', res.data.accessToken),
+        secureStorage.setItem('refreshToken', res.data.refreshToken),
+      ]);
       setShowMerchantMenu(true);
       router.push('/(app)/(tabs)/merchant/dashboard');
-    } catch (error) {
-      console.error('Erreur lors du basculement:', error);
+    } catch (error: any) {
+      console.error('Erreur lors du basculement marchand:', error?.response?.data || error?.message);
+      Alert.alert(
+        'Basculement impossible',
+        error?.response?.data?.message || 'Impossible de basculer en mode marchand.',
+      );
     } finally {
       setTimeout(() => {
         setIsSwitching(false);
@@ -116,7 +134,6 @@ function CustomDrawerContent({ navigation }: any) {
     { name: 'Messages', route: 'messages', icon: 'chatbubbles-outline', color: '#3b82f6' },
     { name: 'Historique', route: 'history', icon: 'time-outline', color: '#64748b' },
     { name: 'Fidélité', route: 'loyalty', icon: 'gift-outline', color: '#8b5cf6' },
-    { name: 'Mes cartes', route: 'payment-cards', icon: 'card-outline', color: '#3b82f6' },
     { name: 'Factures', route: 'bills', icon: 'document-text-outline', color: '#ef4444' },
     { name: 'Bénéficiaires', route: 'beneficiaries', icon: 'people-outline', color: '#1e40af' },
     { name: 'Premium', route: 'premium', icon: 'star-outline', color: '#3b82f6' },
@@ -478,10 +495,6 @@ export default function AppLayout() {
       <Drawer.Screen name="history" options={{ title: 'Historique' }} />
       <Drawer.Screen name="bills" options={{ title: 'Factures' }} />
       <Drawer.Screen name="loyalty" options={{ title: 'Fidélité' }} />
-      <Drawer.Screen
-        name="payment-cards"
-        options={{ title: 'Mes cartes', drawerItemStyle: { display: 'none' } }}
-      />
       <Drawer.Screen name="beneficiaries" options={{ title: 'Bénéficiaires' }} />
       <Drawer.Screen name="profile" options={{ title: 'Mon Profil' }} />
       <Drawer.Screen name="settings" options={{ title: 'Paramètres' }} />

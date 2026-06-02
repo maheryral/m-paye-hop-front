@@ -7,6 +7,7 @@ export interface SavedCard {
   last4: string;
   expiration: string;
   isDefault: boolean;
+  stripePaymentMethodId?: string | null;
 }
 
 export interface SetupIntentResponse {

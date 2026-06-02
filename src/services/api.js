@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL, REQUEST_TIMEOUT_MS } from '../config/env';
 import { secureStorage, getOrCreateDeviceId } from './secureStorage';
 import { getDeviceHeaders, getCachedGeo } from './deviceMeta';
+import { sessionEvents } from './sessionEvents';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -44,35 +45,64 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // 🐛 Log des 4xx/5xx pour debug rapide (URL + statut + payload)
+    if (error.response && (error.response.status >= 400 || error.response.status === 0)) {
+      console.warn(
+        `[API ${error.response.status}] ${originalRequest?.method?.toUpperCase()} ${originalRequest?.baseURL ?? ''}${originalRequest?.url}`,
+        error.response.data,
+      );
+    }
+    // Ne tente PAS de refresh si l'URL qui a échoué est elle-même /auth/refresh
+    // (sinon boucle infinie + wipe immédiat sur première erreur réseau).
+    const isRefreshCall = originalRequest?.url?.includes('/auth/refresh');
+
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      !isRefreshCall
+    ) {
       originalRequest._retry = true;
       try {
         if (!refreshPromise) {
           refreshPromise = (async () => {
             const refreshToken = await secureStorage.getItem('refreshToken');
+            if (!refreshToken) {
+              throw new Error('Pas de refresh token en storage');
+            }
             const deviceId = await getOrCreateDeviceId();
             const response = await axios.post(
               `${API_BASE_URL}/auth/refresh`,
               { refreshToken },
               { headers: { 'x-device-id': deviceId } },
             );
-            if (response.data.accessToken && response.data.refreshToken) {
+            if (response.data?.accessToken && response.data?.refreshToken) {
               await secureStorage.setItem('accessToken', response.data.accessToken);
               await secureStorage.setItem('refreshToken', response.data.refreshToken);
               return response.data.accessToken;
             }
-            throw new Error('Refresh failed');
+            throw new Error(
+              `Refresh: réponse invalide (clés manquantes) - keys=${Object.keys(response.data || {}).join(',')}`,
+            );
           })();
         }
         const newAccessToken = await refreshPromise;
         refreshPromise = null;
         originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
         return api(originalRequest);
-      } catch {
+      } catch (refreshErr) {
         refreshPromise = null;
+        // 🔴 LOG diagnostic : on veut savoir POURQUOI le refresh a échoué
+        // (vu qu'un échec → wipe + redirect login, c'est critique de tracer)
+        console.warn(
+          '[AUTH refresh KO]',
+          refreshErr?.response?.status,
+          refreshErr?.response?.data || refreshErr?.message,
+        );
         // 🧹 Logout complet : wipe tokens (SecureStore) + user (AsyncStorage)
         await secureStorage.multiRemove(['accessToken', 'refreshToken']);
         await AsyncStorage.removeItem('user');
+        // 📣 Notifie AuthContext pour reset user + redirect login
+        sessionEvents.emitExpired();
       }
     }
     return Promise.reject(error);

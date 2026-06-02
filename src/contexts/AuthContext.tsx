@@ -3,9 +3,11 @@
 // 'user' (objet non-sensible) reste dans AsyncStorage.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { router } from 'expo-router';
 import { accountService, authService } from '../services/api';
 import { secureStorage } from '../services/secureStorage';
 import { captureGeoForLogin } from '../services/deviceMeta';
+import { sessionEvents } from '../services/sessionEvents';
 
 interface User {
   id: string;
@@ -66,12 +68,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loadUser();
   }, []);
 
+  /**
+   * Écoute les expirations de session (refresh token KO côté serveur).
+   * api.js émet l'événement après avoir wipe les tokens — ici on reset
+   * le state React et on bascule vers /login pour éviter de rester
+   * coincé sur un écran protégé qui spamme des 401.
+   */
+  useEffect(() => {
+    const unsubscribe = sessionEvents.onExpired(() => {
+      setUser(null);
+      try {
+        router.replace('/(auth)/login');
+      } catch {
+        // router pas encore prêt au tout démarrage — pas critique
+      }
+    });
+    return unsubscribe;
+  }, []);
+
   const loadUser = async () => {
     try {
-      const token = await secureStorage.getItem('accessToken');
-      const storedUser = await AsyncStorage.getItem('user');
-      if (token && storedUser) {
+      const [accessToken, refreshToken, storedUser] = await Promise.all([
+        secureStorage.getItem('accessToken'),
+        secureStorage.getItem('refreshToken'),
+        AsyncStorage.getItem('user'),
+      ]);
+      // 🔐 On exige BOTH tokens + user — sinon la session est incohérente
+      // (cas typique : tokens wipés par un précédent refresh KO, mais user
+      // resté dans AsyncStorage → faux état authentifié qui spam des 401).
+      if (accessToken && refreshToken && storedUser) {
         setUser(JSON.parse(storedUser));
+      } else if (storedUser || accessToken || refreshToken) {
+        // État partiel détecté → on nettoie pour repartir propre
+        await clearSession();
       }
     } catch (error) {
       console.error('Erreur chargement user:', error);
@@ -89,12 +118,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // 📍 Capture la position (permission demandée ici) pour géolocaliser la connexion
     await captureGeoForLogin();
     const response = await authService.login({ login: identifier, password });
-    if (response?.accessToken && response?.user) {
-      await persistSession(response.accessToken, response.refreshToken, response.user);
-      setUser(response.user);
-    } else {
-      throw new Error('Réponse de connexion invalide');
+    if (!response?.accessToken || !response?.refreshToken || !response?.user) {
+      console.warn('[LOGIN] Réponse invalide — clés:', Object.keys(response ?? {}));
+      throw new Error('Réponse de connexion invalide (tokens manquants)');
     }
+    await persistSession(response.accessToken, response.refreshToken, response.user);
+    setUser(response.user);
   };
 
   const setUserFromTokens = async (accessToken: string, refreshToken: string, userData: User) => {
