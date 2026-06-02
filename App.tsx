@@ -23,7 +23,6 @@ import QrPayment from './app/(app)/qr-payment';
 import History from './app/(app)/history';
 import Beneficiaries from './app/(app)/beneficiaries';
 import Bills from './app/(app)/bills';
-import Cards from './app/(app)/cards';
 import Settings from './app/(app)/settings';
 import Security from './app/(app)/security';
 import CompleteProfile from './app/(app)/complete-profile';
@@ -68,7 +67,6 @@ function AppNavigator() {
           <Stack.Screen name="History" component={History} />
           <Stack.Screen name="Beneficiaries" component={Beneficiaries} />
           <Stack.Screen name="Bills" component={Bills} />
-          <Stack.Screen name="Cards" component={Cards} />
           <Stack.Screen name="Settings" component={Settings} />
           <Stack.Screen name="Security" component={Security} />
           <Stack.Screen name="CompleteProfile" component={CompleteProfile} options={{ presentation: 'modal' }} />
