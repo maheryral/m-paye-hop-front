@@ -156,11 +156,16 @@ export default function Transfers() {
     setStep(2);
 
     try {
-      await transactionService.transfer({
-        toPhone: formData.toPhone,
-        amount: amountNum,
-        motif: formData.motif || 'Transfert MyWallet',
-      });
+      // 🔒 Idempotency-Key : double-tap ou retry → backend rejette le doublon
+      const idem = `tx-${formData.toPhone}-${amountNum}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      await transactionService.transfer(
+        {
+          toPhone: formData.toPhone,
+          amount: amountNum,
+          motif: formData.motif || 'Transfert MyWallet',
+        },
+        idem,
+      );
       
       await fetchBalance();
       setStep(3);

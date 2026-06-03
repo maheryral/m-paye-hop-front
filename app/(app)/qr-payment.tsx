@@ -287,11 +287,16 @@ export default function QRPayment() {
         return;
       }
 
-      await transactionService.transfer({
-        toPhone: identifier,
-        amount: parseFloat(amount),
-        motif: 'Transfert QR code',
-      });
+      // 🔒 Idempotency-Key contre double-tap et retry réseau
+      const idem = `qr-tx-${identifier}-${amount}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      await transactionService.transfer(
+        {
+          toPhone: identifier,
+          amount: parseFloat(amount),
+          motif: 'Transfert QR code',
+        },
+        idem,
+      );
       
       await fetchBalance();
       

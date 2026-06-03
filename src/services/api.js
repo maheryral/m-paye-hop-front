@@ -149,7 +149,12 @@ export const accountService = {
 
 export const transactionService = {
   getTransactions: (params) => api.get('/transactions', { params }).then(res => res.data),
-  transfer: (data) => api.post('/transactions/transfer', data).then(res => res.data),
+  transfer: (data, idempotencyKey) =>
+    api
+      .post('/transactions/transfer', data, {
+        headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
+      })
+      .then((res) => res.data),
   searchUserByEmail: (email) => api.get(`/user/search?email=${email}`).then(res => res.data),
   searchUserByPhone: (phone) => api.get(`/user/search?phone=${phone}`).then(res => res.data),
   // 🔎 Autocomplete users (email + phone avec normalisation préfixe pays)
