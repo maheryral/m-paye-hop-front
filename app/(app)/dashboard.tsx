@@ -17,6 +17,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import NotificationBadge from '../../src/components/NotificationBadge';
+import ServicesScroller from '../../src/components/ServicesScroller';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useNavigation } from 'expo-router';
 import { useAuth } from '../../src/contexts/AuthContext';
@@ -65,7 +66,6 @@ export default function Dashboard() {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
   const [activeBottomTab, setActiveBottomTab] = useState('home');
-  const [activeMenu, setActiveMenu] = useState('homeapps');
   const [selectedSaleCategory, setSelectedSaleCategory] = useState<'meals' | 'clothing' | 'others'>('meals');
   const [showBalance, setShowBalance] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -98,32 +98,14 @@ export default function Dashboard() {
     { id: 'wallet', name: 'Portefeuille', icon: 'wallet-outline', color: '#1e40af', gradient: ['#3b82f6', '#1e40af'] as const, route: '/portfolio' },
   ];
 
-  const menuItems = [
-    { id: 'homeapps', name: 'Home Apps', icon: 'apps-outline', activeIcon: 'apps' },
-    { id: 'travel', name: 'Voyage', icon: 'airplane-outline', activeIcon: 'airplane' },
-    { id: 'bank', name: 'Bank Card', icon: 'card-outline', activeIcon: 'card' },
-  ];
+  // 🆕 Les sections "Home Apps / Voyage / Bank Card" sont maintenant
+  // dynamiques via ServicesScroller (alimenté par l'admin). Les listes
+  // hardcodées ci-dessous ont été supprimées.
 
   const saleCategories = [
     { id: 'meals', name: '🍽️ Repas', icon: 'restaurant-outline' },
     { id: 'clothing', name: '👕 Vêtements', icon: 'shirt-outline' },
     { id: 'others', name: '📦 Autres', icon: 'cube-outline' },
-  ];
-
-  const homeApps = [
-    { id: 'facture', name: 'Facture', icon: 'document-text-outline', color: '#1e40af', route: '/bills' },
-    { id: 'telepherique', name: 'Téléphérique', icon: 'cable-outline', color: '#1e40af', route: '/telepherique' },
-    { id: 'bus', name: 'Bus', icon: 'bus-outline', color: '#1e40af', route: '/bus-booking' },
-    { id: 'taxi', name: 'Taxi', icon: 'car-outline', color: '#1e40af', route: '/taxi-booking' },
-    { id: 'evenement', name: 'Événement', icon: 'calendar-outline', color: '#1e40af', route: '/events' },
-  ];
-
-  const travelApps = [
-    { id: 'vols', name: 'Vols', icon: 'airplane-outline', color: '#1e40af', route: '/flight-booking' },
-    { id: 'taxi-brousse', name: 'Taxi Brousse', icon: 'bus-outline', color: '#1e40af', route: '/taxi-brousse' },
-    { id: 'hotel', name: 'Hôtel', icon: 'bed-outline', color: '#1e40af', route: '/hotels' },
-    { id: 'train', name: 'Train', icon: 'train-outline', color: '#1e40af', route: '/train' },
-    { id: 'location', name: 'Location\nvoiture', icon: 'car-outline', color: '#1e40af', route: '/car-rental' },
   ];
 
   const paymentMethods = [
@@ -360,75 +342,8 @@ export default function Dashboard() {
     </View>
   );
 
-  const renderHomeAppsSection = () => (
-    <View style={styles.section}>
-      <Text style={[styles.sectionTitle, { color: colors.text }]}>Home Apps</Text>
-      <View style={styles.servicesGrid}>
-        {homeApps.map((app) => (
-          <TouchableOpacity 
-            key={app.id} 
-            style={styles.serviceItem}
-            onPress={() => app.route && router.push(app.route as any)}
-          >
-            <View style={[styles.serviceIcon, { backgroundColor: `${app.color}20` }]}>
-              <Ionicons name={app.icon as any} size={28} color={app.color} />
-            </View>
-            <Text style={[styles.serviceName, { color: colors.textSecondary }]}>{app.name}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
-  );
-
-  const renderTravelSection = () => (
-    <View style={styles.section}>
-      <Text style={[styles.sectionTitle, { color: colors.text }]}>Voyage</Text>
-      <View style={styles.servicesGrid}>
-        {travelApps.map((app) => (
-          <TouchableOpacity 
-            key={app.id} 
-            style={styles.serviceItem}
-            onPress={() => app.route && router.push(app.route as any)}
-          >
-            <View style={[styles.serviceIcon, { backgroundColor: `${app.color}20` }]}>
-              <Ionicons name={app.icon as any} size={28} color={app.color} />
-            </View>
-            <Text style={[styles.serviceName, { color: colors.textSecondary }]}>{app.name}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
-  );
-
-  const renderBankSection = () => (
-    <View style={styles.section}>
-      <Text style={[styles.sectionTitle, { color: colors.text }]}>Bank Card</Text>
-      <View style={styles.paymentMethodsGrid}>
-        {paymentMethods.map((method) => (
-          <TouchableOpacity key={method.id} style={styles.paymentMethodItem}>
-            <View style={[styles.paymentIcon, { backgroundColor: `${method.color}20` }]}>
-              <Ionicons name={method.icon as any} size={24} color={method.color} />
-            </View>
-            <Text style={[styles.paymentName, { color: colors.textSecondary }]}>{method.name}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-      <TouchableOpacity style={[styles.addCardButton, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <View style={[styles.addCardIcon, { backgroundColor: `${colors.primary}20` }]}>
-          <Ionicons name="add-circle-outline" size={22} color={colors.primary} />
-        </View>
-        <View style={styles.addCardTextWrap}>
-          <Text style={[styles.addCardTitle, { color: colors.text }]} numberOfLines={1}>
-            Ajouter une carte
-          </Text>
-          <Text style={[styles.addCardSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
-            Paiement rapide et sécurisé
-          </Text>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={colors.primary} />
-      </TouchableOpacity>
-    </View>
-  );
+  // Les sections Home Apps / Voyage / Bank Card hardcodées ont été remplacées
+  // par <ServicesScroller /> alimenté par /billers (admin-driven).
 
   const renderMessagesSection = () => (
     <View style={styles.section}>
@@ -486,39 +401,10 @@ export default function Dashboard() {
     if (activeBottomTab === 'home') {
       return (
         <>
-          <View style={[styles.menuContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            {menuItems.map((item) => {
-              const isActive = activeMenu === item.id;
-              return (
-                <TouchableOpacity
-                  key={item.id}
-                  style={styles.menuItem}
-                  onPress={() => setActiveMenu(item.id)}
-                  activeOpacity={0.8}
-                >
-                  {isActive ? (
-                    <LinearGradient
-                      colors={['#3b82f6', '#1e40af']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.menuItemActive}
-                    >
-                      <Ionicons name={item.activeIcon as any} size={18} color="#fff" />
-                      <Text style={[styles.menuText, { color: '#fff', fontWeight: '700' }]}>{item.name}</Text>
-                    </LinearGradient>
-                  ) : (
-                    <View style={styles.menuItemInactive}>
-                      <Ionicons name={item.icon as any} size={18} color={colors.textSecondary} />
-                      <Text style={[styles.menuText, { color: colors.textSecondary }]}>{item.name}</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          {activeMenu === 'homeapps' && renderHomeAppsSection()}
-          {activeMenu === 'travel' && renderTravelSection()}
-          {activeMenu === 'bank' && renderBankSection()}
+          {/* 🆕 Section dynamique : chips horizontaux (Home Apps + types actifs)
+              + grille des billers correspondants. Données gérées par l'admin
+              via /super-admin/billers (isEssential = "Home Apps"). */}
+          <ServicesScroller maxItems={7} />
 
           {/* SECTION PROMO — Cashback / Transferts gratuits / Parrainage */}
           {renderPromoSection()}

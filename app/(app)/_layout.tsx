@@ -129,12 +129,10 @@ function CustomDrawerContent({ navigation }: any) {
     { name: 'QR Code', route: 'qr-payment', icon: 'qr-code-outline', color: '#1e40af' },
     { name: 'Recevoir un paiement', route: 'seller-mode', icon: 'cash-outline', color: '#10b981' },
     { name: 'Transferts', route: 'transfers', icon: 'send-outline', color: '#1e40af' },
-    { name: 'Taxi-Brousse', route: 'taxi-brousse', icon: 'bus-outline', color: '#1e40af' },
-    { name: 'Téléphérique', route: 'telepherique', icon: 'git-network-outline', color: '#0891b2' },
     { name: 'Messages', route: 'messages', icon: 'chatbubbles-outline', color: '#3b82f6' },
     { name: 'Historique', route: 'history', icon: 'time-outline', color: '#64748b' },
     { name: 'Fidélité', route: 'loyalty', icon: 'gift-outline', color: '#8b5cf6' },
-    { name: 'Factures', route: 'bills', icon: 'document-text-outline', color: '#ef4444' },
+    { name: 'Services', route: 'bills', icon: 'apps-outline', color: '#8b5cf6' },
     { name: 'Bénéficiaires', route: 'beneficiaries', icon: 'people-outline', color: '#1e40af' },
     { name: 'Premium', route: 'premium', icon: 'star-outline', color: '#3b82f6' },
   ];
@@ -493,7 +491,15 @@ export default function AppLayout() {
       />
       <Drawer.Screen name="transfers" options={{ title: 'Transferts' }} />
       <Drawer.Screen name="history" options={{ title: 'Historique' }} />
-      <Drawer.Screen name="bills" options={{ title: 'Factures' }} />
+      <Drawer.Screen name="bills" options={{ title: 'Services' }} />
+      {/* Écran WebView ouvert depuis Bills — caché du drawer */}
+      <Drawer.Screen
+        name="biller-webview"
+        options={{
+          title: 'Service',
+          drawerItemStyle: { display: 'none' },
+        }}
+      />
       <Drawer.Screen name="loyalty" options={{ title: 'Fidélité' }} />
       <Drawer.Screen name="beneficiaries" options={{ title: 'Bénéficiaires' }} />
       <Drawer.Screen name="profile" options={{ title: 'Mon Profil' }} />

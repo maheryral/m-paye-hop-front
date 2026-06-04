@@ -14,6 +14,17 @@ const DEFAULT_API_URL = 'http://192.168.1.176:3000';
 export const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL?.trim() || DEFAULT_API_URL;
 
+/**
+ * Base URL du projet `m-paye_Web` (où vivent les mini-programs `/apps/:slug`).
+ * Ouvert en WebView plein écran depuis la page Services.
+ *
+ * Override possible via EXPO_PUBLIC_WEB_URL pour pointer vers staging/prod.
+ */
+const DEFAULT_WEB_URL = 'http://192.168.1.176:5173';
+
+export const WEB_BASE_URL =
+  process.env.EXPO_PUBLIC_WEB_URL?.trim() || DEFAULT_WEB_URL;
+
 // Timeouts
 export const REQUEST_TIMEOUT_MS = 30000;
 
