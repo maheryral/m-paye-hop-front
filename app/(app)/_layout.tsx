@@ -492,6 +492,10 @@ export default function AppLayout() {
       <Drawer.Screen name="transfers" options={{ title: 'Transferts' }} />
       <Drawer.Screen name="history" options={{ title: 'Historique' }} />
       <Drawer.Screen name="bills" options={{ title: 'Services' }} />
+      <Drawer.Screen
+        name="transport-scolaire"
+        options={{ title: 'Transport scolaire', drawerItemStyle: { display: 'none' } }}
+      />
       {/* Écran WebView ouvert depuis Bills — caché du drawer */}
       <Drawer.Screen
         name="biller-webview"
@@ -528,6 +532,15 @@ export default function AppLayout() {
       <Drawer.Screen name="merchant/profile" options={{ title: 'Mon entreprise' }} />
       <Drawer.Screen name="merchant/settings" options={{ title: 'Paramètres' }} />
       <Drawer.Screen name="merchant/help" options={{ title: 'Aide' }} />
+      {/* OAuth Partners — pages ouvertes via deep-link, cachées du drawer */}
+      <Drawer.Screen
+        name="trade-pay"
+        options={{ title: 'Paiement', drawerItemStyle: { display: 'none' } }}
+      />
+      <Drawer.Screen
+        name="oauth-consent"
+        options={{ title: 'Autorisation', drawerItemStyle: { display: 'none' } }}
+      />
     </Drawer>
   );
 }

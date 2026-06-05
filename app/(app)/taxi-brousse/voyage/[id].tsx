@@ -133,10 +133,22 @@ export default function VoyageDetail() {
       );
       fetchBalance();
     } catch (e: any) {
-      Alert.alert(
-        'Paiement échoué',
-        e?.response?.data?.message || 'Erreur lors du paiement',
-      );
+      // Distingue timeout/réseau vs erreur applicative pour faciliter le debug
+      const status = e?.response?.status;
+      const serverMsg = e?.response?.data?.message;
+      let msg: string;
+      if (serverMsg) {
+        msg = serverMsg;
+      } else if (e?.code === 'ECONNABORTED' || /timeout/i.test(e?.message ?? '')) {
+        msg =
+          'Le paiement prend plus de temps que prévu. Vérifiez vos réservations dans "Mes réservations" avant de réessayer.';
+      } else if (!status) {
+        msg =
+          'Connexion au serveur impossible. Vérifiez votre internet et réessayez.';
+      } else {
+        msg = e?.message ?? 'Erreur lors du paiement';
+      }
+      Alert.alert('Paiement échoué', msg);
     } finally {
       setPaying(false);
     }

@@ -16,6 +16,7 @@ import { BiometricGuardProvider } from '../src/contexts/BiometricGuardContext';
 import { SocketProvider } from '../src/contexts/SocketContext';
 import { LocaleProvider } from '../src/contexts/LocaleContext';
 import NotificationToast from '../src/components/NotificationToast';
+import { DeepLinkHandler } from '../src/components/DeepLinkHandler';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -106,6 +107,7 @@ function RootLayoutNav() {
                       <Stack.Screen name="(app)" />
                     </Stack>
                     <NotificationToast />
+                    <DeepLinkHandler />
                   </WalletProvider>
                 </AccountProvider>
               </RoleProvider>

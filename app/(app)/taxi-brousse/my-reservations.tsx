@@ -76,29 +76,84 @@ export default function MyReservations() {
   };
 
   const handleCancel = (id: string) => {
-    Alert.alert(
-      'Annuler la réservation',
-      'Êtes-vous sûr ? Cette action est irréversible.',
-      [
-        { text: 'Non', style: 'cancel' },
-        {
-          text: 'Oui, annuler',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await taxiBrousseApi.cancelReservation(id);
-              Alert.alert('Annulée', 'Réservation annulée');
-              load();
-            } catch (e: any) {
+    const reservation = items.find((r) => r.id === id);
+    const isPaid = reservation?.statusPaiement === 'paye';
+    const prix = Number(reservation?.prixPaye ?? 0);
+
+    // Si payée : montre le preview du refund selon la politique 3-tiers
+    // (mêmes seuils que le backend — purement informatif côté front)
+    let title = 'Annuler la réservation';
+    let message = 'Êtes-vous sûr ? Cette action est irréversible.';
+    let destructiveLabel = 'Oui, annuler';
+
+    if (isPaid && reservation?.voyage) {
+      const departure = combineDateAndTime(
+        reservation.voyage.dateDepart,
+        reservation.voyage.heureDepart,
+      );
+      const hoursBefore =
+        (departure.getTime() - Date.now()) / (1000 * 60 * 60);
+      let refundAmount = 0;
+      let refundLabel = '';
+      if (hoursBefore > 24) {
+        refundAmount = prix;
+        refundLabel = `Vous serez remboursé intégralement : ${formatPrice(refundAmount)}`;
+      } else if (hoursBefore > 12) {
+        refundAmount = Math.round(prix * 0.5);
+        refundLabel = `Remboursement partiel (50%) : ${formatPrice(refundAmount)}\nPénalité retenue : ${formatPrice(prix - refundAmount)}`;
+      } else {
+        refundLabel = `Annulation tardive (< 12h avant départ).\nAucun remboursement possible : ${formatPrice(prix)} retenus.`;
+        destructiveLabel = 'Annuler quand même';
+      }
+      title = 'Confirmer l\'annulation';
+      message = `${refundLabel}\n\nCette action est irréversible.`;
+    }
+
+    Alert.alert(title, message, [
+      { text: 'Garder ma réservation', style: 'cancel' },
+      {
+        text: destructiveLabel,
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const res: any = await taxiBrousseApi.cancelReservation(id);
+            const refund = res?.data?.refund;
+            if (refund && refund.amount > 0) {
               Alert.alert(
-                'Erreur',
-                e?.response?.data?.message || 'Annulation impossible',
+                refund.percent === 100 ? 'Annulée ✅' : 'Annulée — refund partiel ⚠️',
+                `${formatPrice(refund.amount)} recrédités sur votre wallet.${refund.retained > 0 ? ` ${formatPrice(refund.retained)} retenus.` : ''}`,
               );
+            } else if (refund) {
+              Alert.alert(
+                'Annulée',
+                `Aucun remboursement (annulation tardive). ${formatPrice(prix)} retenus.`,
+              );
+            } else {
+              Alert.alert('Annulée', 'Réservation annulée');
             }
-          },
+            load();
+          } catch (e: any) {
+            Alert.alert(
+              'Erreur',
+              e?.response?.data?.message || 'Annulation impossible',
+            );
+          }
         },
-      ],
-    );
+      },
+    ]);
+  };
+
+  /** Combine date + heure "HH:MM" en Date — symétrique au backend. */
+  const combineDateAndTime = (date: string, timeStr?: string): Date => {
+    const base = new Date(date);
+    if (!timeStr) return base;
+    const match = /^(\d{1,2}):(\d{2})/.exec(timeStr.trim());
+    if (!match) return base;
+    const h = Number(match[1]);
+    const m = Number(match[2]);
+    if (Number.isNaN(h) || Number.isNaN(m)) return base;
+    base.setHours(h, m, 0, 0);
+    return base;
   };
 
   const formatPrice = (n: number) =>
@@ -174,8 +229,8 @@ export default function MyReservations() {
           </Text>
         </View>
 
-        {/* Actions */}
-        {!isCancelled && !isPaid && (
+        {/* Actions — Annuler reste possible même après paiement (politique refund 3-tiers) */}
+        {!isCancelled && (
           <View style={styles.actions}>
             <TouchableOpacity
               style={[styles.btn, styles.btnSecondary, { borderColor: colors.border }]}
@@ -183,13 +238,15 @@ export default function MyReservations() {
             >
               <Text style={[styles.btnText, { color: colors.text }]}>Annuler</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.btn, styles.btnPrimary]}
-              onPress={() => handlePay(item.id)}
-            >
-              <Ionicons name="wallet-outline" size={16} color="#fff" />
-              <Text style={[styles.btnText, { color: '#fff' }]}>Payer</Text>
-            </TouchableOpacity>
+            {!isPaid && (
+              <TouchableOpacity
+                style={[styles.btn, styles.btnPrimary]}
+                onPress={() => handlePay(item.id)}
+              >
+                <Ionicons name="wallet-outline" size={16} color="#fff" />
+                <Text style={[styles.btnText, { color: '#fff' }]}>Payer</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 

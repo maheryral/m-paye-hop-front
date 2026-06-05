@@ -1,5 +1,5 @@
 // src/services/tradeApi.ts
-// Endpoints Trade (paiements initiés par les partenaires OAuth) — mobile.
+// Endpoints Trade (paiements & pré-autorisations OAuth) — mobile.
 import api from './api';
 
 export interface TradePartnerInfo {
@@ -14,7 +14,14 @@ export type TradeStatus =
   | 'FAILED'
   | 'REFUNDED'
   | 'EXPIRED'
-  | 'CANCELLED';
+  | 'CANCELLED'
+  // Phase 7
+  | 'AUTHORIZED'
+  | 'CAPTURED'
+  | 'PARTIALLY_CAPTURED'
+  | 'RELEASED';
+
+export type TradeType = 'PAYMENT' | 'AUTHORIZATION';
 
 export interface TradeDto {
   trade_no: string;
@@ -23,7 +30,13 @@ export interface TradeDto {
   currency: string;
   subject: string;
   body: string | null;
+  trade_type: TradeType;
   status: TradeStatus;
+  authorized_amount: number | null;
+  captured_amount: number | null;
+  authorized_at: string | null;
+  captured_at: string | null;
+  released_at: string | null;
   expires_at: string;
   paid_at: string | null;
   refunded_at: string | null;
@@ -34,19 +47,26 @@ export interface TradeDto {
 }
 
 export interface TradePayResult extends Omit<TradeDto, 'partner'> {
-  transactionRef: string;
+  transactionRef?: string;
 }
 
 export const tradeApi = {
-  /** Récupère un trade pour affichage (JWT user). */
   getOne: (tradeNo: string) =>
     api
       .get<TradeDto>(`/trade/${encodeURIComponent(tradeNo)}`)
       .then((r) => r.data),
 
-  /** L'user confirme : débit wallet + Transaction + webhook partenaire. */
   pay: (tradeNo: string) =>
     api
       .post<TradePayResult>(`/trade/${encodeURIComponent(tradeNo)}/pay`, {})
+      .then((r) => r.data),
+
+  /** Phase 7 — confirme une pré-autorisation (hold du wallet). */
+  authorize: (tradeNo: string) =>
+    api
+      .post<TradePayResult>(
+        `/trade/${encodeURIComponent(tradeNo)}/authorize`,
+        {},
+      )
       .then((r) => r.data),
 };
