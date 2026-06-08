@@ -9,7 +9,6 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
-  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -294,17 +293,41 @@ export default function Security() {
                 <View style={[styles.securityIcon, { backgroundColor: `${colors.primary}20` }]}>
                   <Ionicons name={item.icon} size={20} color={colors.primary} />
                 </View>
-                <View>
-                  <Text style={[styles.securityItemName, { color: colors.text }]}>{item.name}</Text>
-                  <Text style={[styles.securityItemDescription, { color: colors.textSecondary }]}>{item.description}</Text>
+                <View style={styles.securityItemText}>
+                  <Text
+                    style={[styles.securityItemName, { color: colors.text }]}
+                    numberOfLines={1}
+                  >
+                    {item.name}
+                  </Text>
+                  <Text
+                    style={[styles.securityItemDescription, { color: colors.textSecondary }]}
+                    numberOfLines={2}
+                  >
+                    {item.description}
+                  </Text>
                 </View>
               </View>
-              <Switch
-                value={item.status}
-                onValueChange={() => toggleSecurityItem(item.id)}
-                trackColor={{ false: colors.border, true: colors.primary }}
-                thumbColor="#fff"
-              />
+              {/* Toggle custom — remplace <Switch> natif dont la largeur imposée
+                  par la plateforme débordait sur certains écrans. Bornes 44×24
+                  garanties, identique iOS/Android, alignées sur le web. */}
+              <TouchableOpacity
+                onPress={() => toggleSecurityItem(item.id)}
+                activeOpacity={0.8}
+                style={[
+                  styles.toggleTrack,
+                  {
+                    backgroundColor: item.status ? colors.primary : colors.border,
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.toggleThumb,
+                    { transform: [{ translateX: item.status ? 20 : 2 }] },
+                  ]}
+                />
+              </TouchableOpacity>
             </View>
           ))}
         </View>
@@ -610,6 +633,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    flex: 1,
+    minWidth: 0,
+  },
+  securityItemText: {
+    flex: 1,
+    minWidth: 0,
   },
   securityIcon: {
     width: 44,
@@ -625,6 +654,29 @@ const styles = StyleSheet.create({
   securityItemDescription: {
     fontSize: 11,
     marginTop: 2,
+  },
+  // === Toggle custom (remplace <Switch> natif) ===
+  // Track 44×24 + thumb 20×20 → identique au toggle web, bornes prévisibles.
+  toggleTrack: {
+    width: 44,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    marginLeft: 8,
+    flexShrink: 0,
+    overflow: 'hidden',
+  },
+  toggleThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    // Petite ombre pour relief
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
+    elevation: 2,
   },
   sessionCard: {
     flexDirection: 'row',

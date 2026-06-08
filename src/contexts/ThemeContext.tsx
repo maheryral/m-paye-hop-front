@@ -2,6 +2,13 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  DEFAULT_DARK_COLORS,
+  DEFAULT_LIGHT_COLORS,
+  resolveBootTheme,
+  fetchTheme,
+  type AppTheme,
+} from '../services/appThemeService';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
@@ -24,45 +31,9 @@ export interface ThemeColors {
   shadow: string;
 }
 
-// Couleurs pour le mode clair
-const lightColors: ThemeColors = {
-  primary: '#2563eb',
-  primaryDark: '#1d4ed8',
-  secondary: '#8b5cf6',
-  background: '#f8fafc',
-  card: '#ffffff',
-  text: '#0f172a',
-  textSecondary: '#64748b',
-  textTertiary: '#94a3b8',
-  border: '#e2e8f0',
-  borderLight: '#f1f5f9',
-  error: '#ef4444',
-  success: '#3b82f6',
-  warning: '#f59e0b',
-  info: '#3b82f6',
-  overlay: 'rgba(0,0,0,0.5)',
-  shadow: '#000000',
-};
-
-// Couleurs pour le mode sombre
-const darkColors: ThemeColors = {
-  primary: '#3b82f6',
-  primaryDark: '#2563eb',
-  secondary: '#a78bfa',
-  background: '#0f172a',
-  card: '#1e293b',
-  text: '#f8fafc',
-  textSecondary: '#94a3b8',
-  textTertiary: '#64748b',
-  border: '#334155',
-  borderLight: '#1e293b',
-  error: '#f87171',
-  success: '#60a5fa',
-  warning: '#fbbf24',
-  info: '#60a5fa',
-  overlay: 'rgba(0,0,0,0.7)',
-  shadow: '#000000',
-};
+// Les couleurs par défaut sont dans appThemeService — single source of truth
+// partagée avec le boot resolver. Le ThemeProvider fetch ensuite la version
+// distante depuis /app-theme et override si disponible.
 
 interface ThemeContextType {
   mode: ThemeMode;
@@ -70,6 +41,8 @@ interface ThemeContextType {
   isDark: boolean;
   setMode: (mode: ThemeMode) => void;
   toggleTheme: () => void;
+  /** Force un re-fetch de la palette depuis l'API (ex: bouton Paramètres). */
+  refreshTheme: () => Promise<boolean>;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -81,9 +54,15 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [mode, setModeState] = useState<ThemeMode>('dark');
   const [isLoading, setIsLoading] = useState(true);
 
+  // Palette dynamique : par défaut bundle defaults, puis remplacée par les
+  // valeurs en cache (instant) puis par la version distante quand fetch OK.
+  const [lightColors, setLightColors] = useState<ThemeColors>(DEFAULT_LIGHT_COLORS);
+  const [darkColors, setDarkColors] = useState<ThemeColors>(DEFAULT_DARK_COLORS);
+
   // Charger le thème sauvegardé au démarrage
   useEffect(() => {
     loadThemeMode();
+    loadColors();
   }, []);
 
   const loadThemeMode = async () => {
@@ -100,6 +79,42 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } finally {
       setIsLoading(false);
     }
+  };
+
+  /**
+   * Charge les couleurs : 1) cache local (instant, évite flash defaults),
+   * 2) puis fetch API en arrière-plan (remplace si plus récent).
+   */
+  const loadColors = async () => {
+    try {
+      const { initial, fresh } = await resolveBootTheme();
+      applyTheme(initial);
+      // Fetch arrière-plan — applique si fresh OK
+      fresh
+        .then((t) => {
+          if (t) applyTheme(t);
+        })
+        .catch(() => {
+          // ignore — on garde le cache ou les defaults
+        });
+    } catch {
+      // Cas extrême : fallback hard-coded — déjà en place via useState initial
+    }
+  };
+
+  const applyTheme = (t: AppTheme) => {
+    setLightColors(t.colorsLight);
+    setDarkColors(t.colorsDark);
+  };
+
+  /** Force un re-fetch (ex: bouton "Recharger thème" dans Paramètres). */
+  const refreshTheme = async (): Promise<boolean> => {
+    const t = await fetchTheme();
+    if (t) {
+      applyTheme(t);
+      return true;
+    }
+    return false;
   };
 
   const saveThemeMode = async (newMode: ThemeMode) => {
@@ -144,6 +159,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     isDark,
     setMode,
     toggleTheme,
+    refreshTheme,
   };
 
   if (isLoading) {

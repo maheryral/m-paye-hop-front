@@ -1,5 +1,5 @@
 // app/(app)/dashboard.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -25,6 +25,10 @@ import { useWallet } from '../../src/contexts/WalletContext';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import { useLocale } from '../../src/contexts/LocaleContext';
 import * as Location from 'expo-location';
+import {
+  billersApi,
+  type PublicBiller,
+} from '../../src/services/billersApi';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -70,9 +74,68 @@ export default function Dashboard() {
   const [showBalance, setShowBalance] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Recherche dashboard : on charge tous les billers et on filtre en local
+  // (la liste est petite et utile aussi pour le ServicesScroller).
+  const [allBillers, setAllBillers] = useState<PublicBiller[]>([]);
+  const [launchingFromSearch, setLaunchingFromSearch] = useState<string | null>(null);
+
   useEffect(() => {
     fetchBalance();
   }, []);
+
+  useEffect(() => {
+    billersApi
+      .list()
+      .then((r) => setAllBillers(Array.isArray(r.data) ? r.data : []))
+      .catch(() => {
+        // silencieux : si HS, la recherche affichera "aucun résultat"
+      });
+  }, []);
+
+  // Résultats filtrés
+  const searchResults = useMemo<PublicBiller[]>(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    return allBillers
+      .filter((b) => {
+        const haystack = [
+          b.name,
+          b.description ?? '',
+          b.serviceType?.label ?? '',
+        ]
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(q);
+      })
+      .slice(0, 15);
+  }, [allBillers, searchQuery]);
+
+  const openBillerFromSearch = async (b: PublicBiller) => {
+    setSearchQuery('');
+    if (b.integrationType === 'NATIVE') {
+      try {
+        router.push(b.redirectPath as any);
+      } catch {
+        Alert.alert(
+          'Erreur',
+          `Impossible d'ouvrir "${b.redirectPath}"`,
+        );
+      }
+      return;
+    }
+    setLaunchingFromSearch(b.id);
+    try {
+      const r = await billersApi.launchToken(b.id);
+      router.push({
+        pathname: '/biller-webview',
+        params: { url: r.data.url, name: b.name, color: b.color || '#6366F1' },
+      });
+    } catch (e: any) {
+      Alert.alert('Erreur', e?.response?.data?.message ?? "Impossible d'ouvrir le service");
+    } finally {
+      setLaunchingFromSearch(null);
+    }
+  };
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -94,7 +157,7 @@ export default function Dashboard() {
   const mainActions = [
     { id: 'scan', name: 'Scanner', icon: 'scan-outline', color: '#1e40af', gradient: ['#3b82f6', '#1e40af'] as const, route: '/qr-payment' },
     { id: 'pay', name: 'Payer et\nRecevoir', icon: 'swap-horizontal-outline', color: '#1e40af', gradient: ['#3b82f6', '#1e40af'] as const, route: '/transfers' },
-    { id: 'transport', name: 'Transports', icon: 'bus-outline', color: '#1e40af', gradient: ['#3b82f6', '#1e40af'] as const, route: '/bills' },
+    { id: 'services', name: 'Services', icon: 'apps-outline', color: '#1e40af', gradient: ['#3b82f6', '#1e40af'] as const, route: '/bills' },
     { id: 'wallet', name: 'Portefeuille', icon: 'wallet-outline', color: '#1e40af', gradient: ['#3b82f6', '#1e40af'] as const, route: '/portfolio' },
   ];
 
@@ -397,19 +460,26 @@ export default function Dashboard() {
     </View>
   );
 
-  const renderMainContent = () => {
+  /**
+   * Contenu SCROLLABLE (seuls le hero + les actions principales sont fixes).
+   * Home Apps + promo + sales scrollent ensemble sur l'onglet 'home'.
+   *
+   * Quand l'user tape dans la barre de recherche du hero, on remplace le
+   * contenu normal par les résultats (services filtrés).
+   */
+  const renderScrollableBody = () => {
+    // ─── Mode RECHERCHE ───
+    if (searchQuery.trim().length > 0) {
+      return renderSearchResults();
+    }
+
+    // ─── Mode normal ───
     if (activeBottomTab === 'home') {
       return (
         <>
-          {/* 🆕 Section dynamique : chips horizontaux (Home Apps + types actifs)
-              + grille des billers correspondants. Données gérées par l'admin
-              via /super-admin/billers (isEssential = "Home Apps"). */}
+          {/* Section dynamique : chips Home Apps + grille des billers */}
           <ServicesScroller maxItems={7} />
-
-          {/* SECTION PROMO — Cashback / Transferts gratuits / Parrainage */}
           {renderPromoSection()}
-
-          {/* SECTION VENTE EN BAS - AFFICHÉE TOUT LE TEMPS DANS L'ONGLET HOME */}
           {renderSalesSection()}
         </>
       );
@@ -420,21 +490,67 @@ export default function Dashboard() {
     }
   };
 
+  const renderSearchResults = () => {
+    return (
+      <View style={styles.searchResultsWrap}>
+        <Text style={[styles.searchResultsHint, { color: colors.textSecondary }]}>
+          {searchResults.length === 0
+            ? `Aucun service ne correspond à "${searchQuery.trim()}"`
+            : `${searchResults.length} résultat${searchResults.length > 1 ? 's' : ''}`}
+        </Text>
+
+        {searchResults.map((b) => (
+          <TouchableOpacity
+            key={b.id}
+            onPress={() => openBillerFromSearch(b)}
+            disabled={!!launchingFromSearch}
+            style={[
+              styles.searchResultRow,
+              { backgroundColor: colors.card, borderColor: colors.border, opacity: launchingFromSearch && launchingFromSearch !== b.id ? 0.5 : 1 },
+            ]}
+          >
+            <View
+              style={[
+                styles.searchResultIcon,
+                { backgroundColor: b.color || '#6366F1' },
+              ]}
+            >
+              <Ionicons name="apps-outline" size={18} color="#fff" />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text
+                style={[styles.searchResultName, { color: colors.text }]}
+                numberOfLines={1}
+              >
+                {b.name}
+              </Text>
+              <Text
+                style={[styles.searchResultMeta, { color: colors.textSecondary }]}
+                numberOfLines={1}
+              >
+                {b.serviceType?.label ?? 'Service'}
+                {b.description ? ` · ${b.description}` : ''}
+              </Text>
+            </View>
+            {launchingFromSearch === b.id ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+            )}
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView edges={['bottom']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor="#fff"
-              colors={[colors.primary]}
-            />
-          }
-          contentContainerStyle={{ paddingBottom: 20 }}
-        >
+        {/* ════════════════════════════════════════════════════════
+            HEADER FIXE — hero + actions + Home Apps (onglet 'home')
+            Ne scroll pas avec le contenu.
+            ════════════════════════════════════════════════════════ */}
+        <View>
           {/* === BANNIÈRE TOP DÉGRADÉ VIOLET === */}
           <LinearGradient
             colors={['#3b82f6', '#1e40af', '#1e3a8a']}
@@ -456,12 +572,18 @@ export default function Dashboard() {
               <View style={styles.searchBar}>
                 <Ionicons name="search" size={16} color="rgba(255,255,255,0.7)" />
                 <TextInput
-                  placeholder="Rechercher..."
+                  placeholder="Rechercher un service..."
                   placeholderTextColor="rgba(255,255,255,0.7)"
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                   style={styles.searchInput}
+                  returnKeyType="search"
                 />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={8}>
+                    <Ionicons name="close-circle" size={16} color="rgba(255,255,255,0.9)" />
+                  </TouchableOpacity>
+                )}
               </View>
 
               <TouchableOpacity
@@ -522,10 +644,27 @@ export default function Dashboard() {
                 </TouchableOpacity>
               ))}
             </View>
-
-            {/* Contenu principal */}
-            {renderMainContent()}
           </View>
+        </View>
+
+        {/* ════════════════════════════════════════════════════════
+            BODY SCROLLABLE — Home Apps, promo, sales, messages ou profile.
+            Refresh control accessible depuis ici (pull-to-refresh).
+            ════════════════════════════════════════════════════════ */}
+        <ScrollView
+          style={{ flex: 1 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
+          contentContainerStyle={{ paddingBottom: 20 }}
+        >
+          {renderScrollableBody()}
         </ScrollView>
 
         {/* Bottom Tab Bar moderne */}
@@ -718,7 +857,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderRadius: 20,
     borderWidth: 1,
-    marginBottom: 20,
+    marginBottom: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
@@ -1200,5 +1339,41 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.3,
+  },
+
+  // ─── Résultats de recherche ──────────────
+  searchResultsWrap: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 24,
+    gap: 8,
+  },
+  searchResultsHint: {
+    fontSize: 12,
+    marginBottom: 6,
+  },
+  searchResultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  searchResultIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchResultName: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  searchResultMeta: {
+    fontSize: 11,
+    marginTop: 2,
   },
 });

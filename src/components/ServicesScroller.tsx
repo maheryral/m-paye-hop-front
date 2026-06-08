@@ -153,44 +153,38 @@ export default function ServicesScroller({ maxItems = 7 }: { maxItems?: number }
 
   return (
     <View style={{ marginVertical: 12 }}>
-      {/* "Home Apps" reste fixe à gauche ; les autres types scrollent
-          horizontalement dans leur propre ScrollView. */}
-      <View style={styles.chipsContainer}>
-        <View style={styles.chipsFixed}>
+      {/* Tous les chips scrollent ensemble horizontalement, Home Apps inclus.
+          Home Apps reste en premier (à gauche) mais peut être poussé hors écran
+          au scroll comme les autres. */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chipsScroll}
+      >
+        <Chip
+          label="Home Apps"
+          iconName="star"
+          color="#FBBF24"
+          active={activeChip === HOME_APPS_KEY}
+          onPress={() => setActiveChip(HOME_APPS_KEY)}
+          textColor={colors.text}
+          borderColor={colors.border}
+          cardBg={colors.card}
+        />
+        {types.map((t) => (
           <Chip
-            label="Home Apps"
-            iconName="star"
-            color="#FBBF24"
-            active={activeChip === HOME_APPS_KEY}
-            onPress={() => setActiveChip(HOME_APPS_KEY)}
+            key={t.id}
+            label={t.label}
+            iconName={lucideToIonicons(t.iconName)}
+            color={t.color || '#6366F1'}
+            active={activeChip === t.id}
+            onPress={() => setActiveChip(t.id)}
             textColor={colors.text}
             borderColor={colors.border}
             cardBg={colors.card}
           />
-        </View>
-        {types.length > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipsScrollable}
-            style={{ flex: 1 }}
-          >
-            {types.map((t) => (
-              <Chip
-                key={t.id}
-                label={t.label}
-                iconName={lucideToIonicons(t.iconName)}
-                color={t.color || '#6366F1'}
-                active={activeChip === t.id}
-                onPress={() => setActiveChip(t.id)}
-                textColor={colors.text}
-                borderColor={colors.border}
-                cardBg={colors.card}
-              />
-            ))}
-          </ScrollView>
-        )}
-      </View>
+        ))}
+      </ScrollView>
 
       {/* Grille */}
       {filtered.length === 0 ? (
@@ -335,15 +329,12 @@ function Chip({
 const styles = StyleSheet.create({
   loading: { padding: 16, alignItems: 'center' },
 
-  chipsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  chipsScroll: {
+    gap: 8,
     paddingHorizontal: 16,
     paddingVertical: 8,
-    gap: 8,
+    alignItems: 'center',
   },
-  chipsFixed: { flexShrink: 0 },
-  chipsScrollable: { gap: 8, paddingRight: 8 },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -358,7 +349,6 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: 12,
     paddingTop: 4,
   },
   cell: {

@@ -481,37 +481,44 @@ export default function Portfolio() {
             </TouchableOpacity>
           </View>
 
-          {/* Choix méthode */}
+          {/* Choix méthode — grille qui wrap automatiquement quand l'écran est plein */}
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Choisissez une méthode</Text>
-          {METHODS.map((m) => {
-            const disabled = tab === 'withdraw' && m.id === 'CARD';
-            return (
-              <TouchableOpacity
-                key={m.id}
-                style={[
-                  styles.methodCard,
-                  {
-                    backgroundColor: colors.card,
-                    borderColor: colors.border,
-                    opacity: disabled ? 0.4 : 1,
-                  },
-                ]}
-                disabled={disabled}
-                onPress={() => openMethodModal(m.id)}
-              >
-                <View style={[styles.methodIcon, { backgroundColor: m.color }]}>
-                  <Ionicons name={m.icon} size={22} color="#fff" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.methodName, { color: colors.text }]}>{m.name}</Text>
-                  <Text style={[styles.methodDesc, { color: colors.textSecondary }]}>
+          <View style={styles.methodsGrid}>
+            {METHODS.map((m) => {
+              const disabled = tab === 'withdraw' && m.id === 'CARD';
+              return (
+                <TouchableOpacity
+                  key={m.id}
+                  style={[
+                    styles.methodCard,
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: colors.border,
+                      opacity: disabled ? 0.4 : 1,
+                    },
+                  ]}
+                  disabled={disabled}
+                  onPress={() => openMethodModal(m.id)}
+                >
+                  <View style={[styles.methodIcon, { backgroundColor: m.color }]}>
+                    <Ionicons name={m.icon} size={22} color="#fff" />
+                  </View>
+                  <Text
+                    style={[styles.methodName, { color: colors.text }]}
+                    numberOfLines={1}
+                  >
+                    {m.name}
+                  </Text>
+                  <Text
+                    style={[styles.methodDesc, { color: colors.textSecondary }]}
+                    numberOfLines={2}
+                  >
                     {m.description}
                   </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-              </TouchableOpacity>
-            );
-          })}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
 
           <Text style={[styles.hint, { color: colors.textSecondary }]}>
             Cliquez sur une méthode pour ouvrir le formulaire de {tab === 'deposit' ? 'dépôt' : 'retrait'}.
@@ -1048,13 +1055,26 @@ const styles = StyleSheet.create({
   sectionTitle2: { fontSize: 14, fontWeight: '700' },
   hint: { fontSize: 11, textAlign: 'center', marginTop: 8 },
 
-  methodCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    padding: 14, borderRadius: 14, marginBottom: 10, borderWidth: 1,
+  /** Conteneur grille : 2 cartes par ligne en mode portrait, wrap auto si plus. */
+  methodsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
   },
-  methodIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  methodName: { fontWeight: '700', fontSize: 14 },
-  methodDesc: { fontSize: 11, marginTop: 2 },
+  /** Carte méthode en mode vertical (icône en haut, texte en dessous).
+   *  Largeur = (100% - gap 10) / 2 = ~48% pour avoir 2 colonnes proprement. */
+  methodCard: {
+    width: '48%',
+    alignItems: 'center',
+    gap: 8,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    minHeight: 130,
+  },
+  methodIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  methodName: { fontWeight: '700', fontSize: 13, textAlign: 'center' },
+  methodDesc: { fontSize: 11, textAlign: 'center', lineHeight: 14 },
 
   // === Modal plein écran ===
   modalHeaderRow: {

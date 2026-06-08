@@ -177,6 +177,38 @@ export const beneficiaryService = {
   update: (id, data) => api.patch(`/beneficiaries/${id}`, data).then(res => res.data),
   toggleFavorite: (id) => api.patch(`/beneficiaries/${id}/favorite`).then(res => res.data),
   remove: (id) => api.delete(`/beneficiaries/${id}`).then(res => res.data),
+  /**
+   * Upload de la photo de profil — multipart/form-data.
+   * @param {string} id
+   * @param {{uri:string, name?:string, type?:string}} file
+   */
+  uploadAvatar: (id, file) => {
+    const form = new FormData();
+    form.append('file', {
+      uri: file.uri,
+      name: file.name || 'avatar.jpg',
+      type: file.type || 'image/jpeg',
+    });
+    return api
+      .post(`/beneficiaries/${id}/avatar`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then(res => res.data);
+  },
+  removeAvatar: (id) =>
+    api.delete(`/beneficiaries/${id}/avatar`).then(res => res.data),
+};
+
+/**
+ * Résout une URL d'asset relative (renvoyée par l'API, ex `/uploads/avatars/...`)
+ * en URL absolue téléchargeable. Renvoie null/undefined inchangé.
+ */
+export const resolveAssetUrl = (relativeOrAbsolute) => {
+  if (!relativeOrAbsolute) return relativeOrAbsolute;
+  if (/^https?:\/\//i.test(relativeOrAbsolute)) return relativeOrAbsolute;
+  const base = API_BASE_URL.replace(/\/$/, '');
+  const cleaned = relativeOrAbsolute.startsWith('/') ? relativeOrAbsolute : `/${relativeOrAbsolute}`;
+  return `${base}${cleaned}`;
 };
 
 /**

@@ -1,5 +1,5 @@
 // app/(app)/notifications.tsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -27,6 +27,8 @@ interface Notification {
   actionId?: string;
 }
 
+const PAGE_SIZE = 20;
+
 export default function Notifications() {
   const router = useRouter();
   const { colors } = useTheme();
@@ -39,10 +41,12 @@ export default function Notifications() {
   const [hasMore, setHasMore] = useState(true);
   const [total, setTotal] = useState(0);
 
-  const PAGE_SIZE = 20;
+  // Anti double-fetch (onEndReached peut firer plusieurs fois rapidement)
+  const isFetchingRef = React.useRef(false);
 
   useEffect(() => {
-    loadNotifications(true);
+    loadNotifications({ reset: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 🔌 Temps réel : préfixe la nouvelle notification en tête de liste
@@ -58,31 +62,34 @@ export default function Notifications() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadNotifications = async (reset = false) => {
-    try {
-      if (reset) {
-        setLoading(true);
-        setPage(1);
-      } else {
-        setLoadingMore(true);
-      }
+  /**
+   * Charge une page de notifications.
+   *   - reset: true  → page 1, écrase la liste (mount, pull-to-refresh)
+   *   - reset: false → append à la suite (infinite scroll)
+   *
+   * Utilise les méta du backend (`pagination.total`, `pagination.hasNextPage`)
+   * — fiable même si la dernière page contient < PAGE_SIZE items.
+   */
+  const loadNotifications = async (opts: { reset?: boolean } = {}) => {
+    const reset = !!opts.reset;
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
 
-      const currentPage = reset ? 1 : page;
-      const response = await notificationService.getNotifications(currentPage, PAGE_SIZE);
-      
-      const notificationsData = response?.notifications || [];
-      const totalCount = response?.total || 0;
-      
+    const targetPage = reset ? 1 : page + 1;
+    if (reset) setLoading(true);
+    else setLoadingMore(true);
+
+    try {
+      const response = await notificationService.getNotifications(targetPage, PAGE_SIZE);
+      const items: Notification[] = response?.notifications ?? [];
+      const pagination = response?.pagination ?? {};
+      const totalCount: number = pagination.total ?? items.length;
+      const hasNext: boolean = pagination.hasNextPage ?? false;
+
+      setNotifications(prev => (reset ? items : [...prev, ...items]));
+      setPage(targetPage);
+      setHasMore(hasNext);
       setTotal(totalCount);
-      setHasMore(notificationsData.length === PAGE_SIZE && notifications.length + notificationsData.length < totalCount);
-      
-      if (reset) {
-        setNotifications(notificationsData);
-        setPage(2);
-      } else {
-        setNotifications(prev => [...prev, ...notificationsData]);
-        setPage(prev => prev + 1);
-      }
     } catch (error: any) {
       console.error(
         'Erreur chargement notifications:',
@@ -96,18 +103,18 @@ export default function Notifications() {
       setLoading(false);
       setLoadingMore(false);
       setRefreshing(false);
+      isFetchingRef.current = false;
     }
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadNotifications(true);
+    await loadNotifications({ reset: true });
   };
 
   const loadMore = () => {
-    if (!loadingMore && hasMore && !loading) {
-      loadNotifications(false);
-    }
+    if (loading || loadingMore || !hasMore) return;
+    loadNotifications({ reset: false });
   };
 
   const markAsRead = async (id: string) => {
@@ -186,13 +193,22 @@ export default function Notifications() {
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
   const renderFooter = () => {
-    if (!loadingMore) return null;
-    return (
-      <View style={styles.footerLoader}>
-        <ActivityIndicator size="small" color={colors.primary} />
-        <Text style={[styles.footerText, { color: colors.textSecondary }]}>Chargement...</Text>
-      </View>
-    );
+    if (loadingMore) {
+      return (
+        <View style={styles.footerLoader}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={[styles.footerText, { color: colors.textSecondary }]}>Chargement...</Text>
+        </View>
+      );
+    }
+    if (!hasMore && notifications.length > 0) {
+      return (
+        <Text style={[styles.endOfListText, { color: colors.textSecondary }]}>
+          {notifications.length} affichée{notifications.length > 1 ? 's' : ''} sur {total}
+        </Text>
+      );
+    }
+    return null;
   };
 
   const renderHeader = () => {
@@ -392,5 +408,10 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 12,
+  },
+  endOfListText: {
+    fontSize: 12,
+    textAlign: 'center',
+    paddingVertical: 20,
   },
 });

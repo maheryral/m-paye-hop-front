@@ -13,7 +13,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import GradientHeader from '../../src/components/GradientHeader';
 import { transactionService } from '../../src/services/api';
@@ -33,41 +33,83 @@ interface Transaction {
   receiver?: { fullName: string; email: string; telephone: string };
 }
 
+const PAGE_SIZE = 20;
+
 export default function History() {
   const router = useRouter();
   const { colors } = useTheme();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'credit' | 'debit'>('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  // Pré-remplit la recherche via query param ?q=... (ex: depuis page Bénéficiaires)
+  const params = useLocalSearchParams<{ q?: string }>();
+  const initialQuery = Array.isArray(params.q) ? params.q[0] : params.q ?? '';
+  const [searchQuery, setSearchQuery] = useState(initialQuery);
+
+  // Pagination
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
+  const isFetchingRef = React.useRef(false);
 
   useEffect(() => {
-    loadTransactions();
+    loadTransactions({ reset: true });
   }, []);
 
-  const loadTransactions = async () => {
+  /**
+   * Charge une page de transactions.
+   *   - `reset: true`  → reset à la page 1, écrase la liste (mount, refresh, filter)
+   *   - `reset: false` → append à la suite (infinite scroll)
+   */
+  const loadTransactions = async (opts: { reset?: boolean } = {}) => {
+    const reset = !!opts.reset;
+    // Anti double-fetch (peut arriver avec onEndReached + autres triggers)
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
+    const targetPage = reset ? 1 : page + 1;
+    if (reset) setLoading(true);
+    else setLoadingMore(true);
+
     try {
-      setLoading(true);
-      const response = await transactionService.getTransactions({ limit: 50 });
-      const transactionsData = response?.transactions || [];
-      setTransactions(transactionsData);
+      const response = await transactionService.getTransactions({
+        page: targetPage,
+        limit: PAGE_SIZE,
+      });
+      const items: Transaction[] = response?.transactions ?? [];
+      const pagination = response?.pagination ?? {};
+      const total: number = pagination.total ?? items.length;
+      const totalPages: number = pagination.totalPages ?? 1;
+
+      setTransactions(prev => (reset ? items : [...prev, ...items]));
+      setPage(targetPage);
+      setHasMore(targetPage < totalPages);
+      setTotalCount(total);
     } catch (error: any) {
       console.error(
         'Erreur chargement transactions:',
         error?.response?.data || error?.message,
       );
-      setTransactions([]);
+      if (reset) setTransactions([]);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
+      isFetchingRef.current = false;
     }
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadTransactions();
+    await loadTransactions({ reset: true });
     setRefreshing(false);
+  };
+
+  const onEndReached = () => {
+    if (loading || loadingMore || !hasMore) return;
+    loadTransactions({ reset: false });
   };
 
   const formatDate = (dateString: string) => {
@@ -101,52 +143,82 @@ export default function History() {
     return true;
   });
 
+  // Stats : `total` vient du backend (toutes les transactions, pas juste la page).
+  // `credits/debits` sont calculés sur les pages chargées (cumulés au scroll).
+  // Pour des totaux globaux exacts, ajouter un endpoint /transactions/stats.
   const stats = {
-    total: transactions.length,
+    total: totalCount,
     credits: transactions.filter(t => t.isCredit || t.type === 'DEPOSIT').reduce((s, t) => s + t.montant, 0),
     debits: transactions.filter(t => !t.isCredit && t.type !== 'DEPOSIT').reduce((s, t) => s + t.montant, 0),
     fees: transactions.reduce((s, t) => s + (t.feeAmount || 0), 0),
   };
 
-  const renderTransaction = ({ item }: { item: Transaction }) => (
-    <TouchableOpacity
-      style={[styles.transactionCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-      onPress={() => setSelectedTransaction(item)}
-    >
-      <View style={styles.transactionLeft}>
-        <View
-          style={[
-            styles.transactionIcon,
-            { backgroundColor: item.isCredit || item.type === 'DEPOSIT' ? `${colors.success}20` : `${colors.error}20` },
-          ]}
-        >
-          <Ionicons
-            name={item.isCredit || item.type === 'DEPOSIT' ? 'arrow-down' : 'arrow-up'}
-            size={20}
-            color={item.isCredit || item.type === 'DEPOSIT' ? colors.success : colors.error}
-          />
+  const renderTransaction = ({ item }: { item: Transaction }) => {
+    const isCreditLike = item.isCredit || item.type === 'DEPOSIT';
+    return (
+      <TouchableOpacity
+        style={[styles.transactionCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+        onPress={() => setSelectedTransaction(item)}
+      >
+        <View style={styles.transactionLeft}>
+          <View
+            style={[
+              styles.transactionIcon,
+              { backgroundColor: isCreditLike ? `${colors.success}20` : `${colors.error}20` },
+            ]}
+          >
+            <Ionicons
+              name={isCreditLike ? 'arrow-down' : 'arrow-up'}
+              size={20}
+              color={isCreditLike ? colors.success : colors.error}
+            />
+          </View>
+          <View style={styles.transactionTextWrap}>
+            <Text
+              style={[styles.transactionTitle, { color: colors.text }]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {getTransactionTitle(item)}
+            </Text>
+            <Text
+              style={[styles.transactionDate, { color: colors.textSecondary }]}
+              numberOfLines={1}
+            >
+              {formatDate(item.createdAt)}
+            </Text>
+            <Text
+              style={[styles.transactionRef, { color: colors.textSecondary }]}
+              numberOfLines={1}
+            >
+              Ref: {item.reference.slice(0, 8)}
+            </Text>
+          </View>
         </View>
-        <View>
-          <Text style={[styles.transactionTitle, { color: colors.text }]}>{getTransactionTitle(item)}</Text>
-          <Text style={[styles.transactionDate, { color: colors.textSecondary }]}>{formatDate(item.createdAt)}</Text>
-          <Text style={[styles.transactionRef, { color: colors.textSecondary }]}>Ref: {item.reference.slice(0, 8)}</Text>
+        <View style={styles.transactionRight}>
+          <Text
+            style={[
+              styles.transactionAmount,
+              { color: isCreditLike ? colors.success : colors.error },
+            ]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.7}
+          >
+            {isCreditLike ? '+' : '-'}{item.montant.toLocaleString()} Ar
+          </Text>
+          <View style={[styles.transactionStatus, { backgroundColor: `${colors.success}15` }]}>
+            <Text
+              style={[styles.transactionStatusText, { color: colors.success }]}
+              numberOfLines={1}
+            >
+              {item.statut}
+            </Text>
+          </View>
         </View>
-      </View>
-      <View style={styles.transactionRight}>
-        <Text
-          style={[
-            styles.transactionAmount,
-            { color: item.isCredit || item.type === 'DEPOSIT' ? colors.success : colors.error },
-          ]}
-        >
-          {item.isCredit || item.type === 'DEPOSIT' ? '+' : '-'}{item.montant.toLocaleString()} Ar
-        </Text>
-        <View style={[styles.transactionStatus, { backgroundColor: `${colors.success}15` }]}>
-          <Text style={[styles.transactionStatusText, { color: colors.success }]}>{item.statut}</Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -155,15 +227,35 @@ export default function History() {
       {/* Stats */}
       <View style={styles.statsContainer}>
         <View style={[styles.statCard, { backgroundColor: colors.card }]}>
-          <Text style={[styles.statValue, { color: colors.text }]}>{stats.total}</Text>
+          <Text
+            style={[styles.statValue, { color: colors.text }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
+            {stats.total}
+          </Text>
           <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Transactions</Text>
         </View>
         <View style={[styles.statCard, { backgroundColor: colors.card }]}>
-          <Text style={[styles.statValue, { color: colors.success }]}>{stats.credits.toLocaleString()} Ar</Text>
+          <Text
+            style={[styles.statValue, { color: colors.success }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.6}
+          >
+            {formatCompactAr(stats.credits)}
+          </Text>
           <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Crédits</Text>
         </View>
         <View style={[styles.statCard, { backgroundColor: colors.card }]}>
-          <Text style={[styles.statValue, { color: colors.error }]}>{stats.debits.toLocaleString()} Ar</Text>
+          <Text
+            style={[styles.statValue, { color: colors.error }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.6}
+          >
+            {formatCompactAr(stats.debits)}
+          </Text>
           <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Débits</Text>
         </View>
       </View>
@@ -217,11 +309,32 @@ export default function History() {
           renderItem={renderTransaction}
           contentContainerStyle={styles.listContent}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          onEndReached={onEndReached}
+          onEndReachedThreshold={0.3}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Ionicons name="document-text-outline" size={64} color={colors.textSecondary} />
-              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Aucune transaction</Text>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                {searchQuery || filterType !== 'all'
+                  ? 'Aucune transaction correspondante'
+                  : 'Aucune transaction'}
+              </Text>
             </View>
+          }
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={styles.loadingMoreContainer}>
+                <ActivityIndicator color={colors.primary} />
+                <Text style={[styles.loadingMoreText, { color: colors.textSecondary }]}>
+                  Chargement…
+                </Text>
+              </View>
+            ) : !hasMore && transactions.length > 0 ? (
+              <Text style={[styles.endOfListText, { color: colors.textSecondary }]}>
+                {transactions.length} transaction{transactions.length > 1 ? 's' : ''} affichée
+                {transactions.length > 1 ? 's' : ''} sur {totalCount}
+              </Text>
+            ) : null
           }
         />
       )}
@@ -237,83 +350,143 @@ export default function History() {
               </TouchableOpacity>
             </View>
 
-            {selectedTransaction && (
+            {selectedTransaction && (() => {
+              const tx = selectedTransaction;
+              const isCreditLike = tx.isCredit || tx.type === 'DEPOSIT';
+              return (
               <ScrollView showsVerticalScrollIndicator={false}>
                 <View style={styles.modalDetails}>
-                  <View style={styles.detailRow}>
-                    <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Type</Text>
-                    <Text style={[styles.detailValue, { color: colors.text }]}>
-                      {selectedTransaction.type === 'DEPOSIT' ? 'Dépôt' : 'Transfert'}
-                    </Text>
-                  </View>
-                  <View style={styles.detailRow}>
-                    <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Montant</Text>
-                    <Text
-                      style={[
-                        styles.detailValue,
-                        { color: selectedTransaction.isCredit || selectedTransaction.type === 'DEPOSIT' ? colors.success : colors.error, fontWeight: 'bold' },
-                      ]}
-                    >
-                      {selectedTransaction.isCredit || selectedTransaction.type === 'DEPOSIT' ? '+' : '-'}
-                      {selectedTransaction.montant.toLocaleString()} Ar
-                    </Text>
-                  </View>
-                  {selectedTransaction.feeAmount > 0 && (
-                    <View style={styles.detailRow}>
-                      <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Frais</Text>
-                      <Text style={[styles.detailValue, { color: colors.warning }]}>{selectedTransaction.feeAmount.toLocaleString()} Ar</Text>
-                    </View>
+                  <DetailRow
+                    label="Type"
+                    value={tx.type === 'DEPOSIT' ? 'Dépôt' : 'Transfert'}
+                    colors={colors}
+                  />
+                  <DetailRow
+                    label="Montant"
+                    value={`${isCreditLike ? '+' : '-'}${tx.montant.toLocaleString()} Ar`}
+                    valueColor={isCreditLike ? colors.success : colors.error}
+                    bold
+                    colors={colors}
+                  />
+                  {tx.feeAmount > 0 && (
+                    <DetailRow
+                      label="Frais"
+                      value={`${tx.feeAmount.toLocaleString()} Ar`}
+                      valueColor={colors.warning}
+                      colors={colors}
+                    />
                   )}
                   <View style={styles.detailRow}>
                     <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Statut</Text>
                     <View style={[styles.statusBadge, { backgroundColor: `${colors.success}15` }]}>
-                      <Text style={[styles.statusBadgeText, { color: colors.success }]}>{selectedTransaction.statut}</Text>
+                      <Text style={[styles.statusBadgeText, { color: colors.success }]} numberOfLines={1}>
+                        {tx.statut}
+                      </Text>
                     </View>
                   </View>
-                  <View style={styles.detailRow}>
-                    <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Date</Text>
-                    <Text style={[styles.detailValue, { color: colors.text }]}>
-                      {new Date(selectedTransaction.createdAt).toLocaleString('fr-FR')}
-                    </Text>
-                  </View>
-                  {selectedTransaction.motif && (
-                    <View style={styles.detailRow}>
-                      <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Motif</Text>
-                      <Text style={[styles.detailValue, { color: colors.text }]}>{selectedTransaction.motif}</Text>
-                    </View>
+                  <DetailRow
+                    label="Date"
+                    value={new Date(tx.createdAt).toLocaleString('fr-FR')}
+                    colors={colors}
+                  />
+                  {tx.motif && (
+                    <DetailRow label="Motif" value={tx.motif} colors={colors} />
                   )}
-                  <View style={styles.detailRow}>
-                    <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Référence</Text>
-                    <Text style={[styles.detailValue, { color: colors.text, fontFamily: 'monospace' }]}>
-                      {selectedTransaction.reference}
-                    </Text>
-                  </View>
-                  {selectedTransaction.sender && (
+                  <DetailRow
+                    label="Référence"
+                    value={tx.reference}
+                    mono
+                    colors={colors}
+                  />
+                  {tx.sender && (
                     <View style={styles.personInfo}>
                       <Text style={[styles.personLabel, { color: colors.textSecondary }]}>Expéditeur</Text>
-                      <Text style={[styles.personName, { color: colors.text }]}>{selectedTransaction.sender.fullName}</Text>
-                      <Text style={[styles.personContact, { color: colors.textSecondary }]}>
-                        {selectedTransaction.sender.email || selectedTransaction.sender.telephone}
+                      <Text style={[styles.personName, { color: colors.text }]} numberOfLines={1}>
+                        {tx.sender.fullName}
+                      </Text>
+                      <Text
+                        style={[styles.personContact, { color: colors.textSecondary }]}
+                        numberOfLines={1}
+                      >
+                        {tx.sender.email || tx.sender.telephone}
                       </Text>
                     </View>
                   )}
-                  {selectedTransaction.receiver && (
+                  {tx.receiver && (
                     <View style={styles.personInfo}>
                       <Text style={[styles.personLabel, { color: colors.textSecondary }]}>Destinataire</Text>
-                      <Text style={[styles.personName, { color: colors.text }]}>{selectedTransaction.receiver.fullName}</Text>
-                      <Text style={[styles.personContact, { color: colors.textSecondary }]}>
-                        {selectedTransaction.receiver.email || selectedTransaction.receiver.telephone}
+                      <Text style={[styles.personName, { color: colors.text }]} numberOfLines={1}>
+                        {tx.receiver.fullName}
+                      </Text>
+                      <Text
+                        style={[styles.personContact, { color: colors.textSecondary }]}
+                        numberOfLines={1}
+                      >
+                        {tx.receiver.email || tx.receiver.telephone}
                       </Text>
                     </View>
                   )}
                 </View>
               </ScrollView>
-            )}
+              );
+            })()}
           </View>
         </View>
       </Modal>
     </View>
   );
+}
+
+// ─── Sous-composants & helpers ─────────────────────────
+
+/** Ligne label/valeur du modal détails — gère le wrap propre des valeurs longues. */
+function DetailRow({
+  label,
+  value,
+  valueColor,
+  bold,
+  mono,
+  colors,
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+  bold?: boolean;
+  mono?: boolean;
+  colors: any;
+}) {
+  return (
+    <View style={styles.detailRow}>
+      <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{label}</Text>
+      <Text
+        style={[
+          styles.detailValue,
+          {
+            color: valueColor ?? colors.text,
+            fontWeight: bold ? 'bold' : 'normal',
+            fontFamily: mono ? 'monospace' : undefined,
+          },
+        ]}
+        numberOfLines={3}
+        ellipsizeMode={mono ? 'middle' : 'tail'}
+      >
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+/** Format compact Ar : 1 234 567 → "1,23 M Ar", 25 000 → "25 000 Ar" */
+function formatCompactAr(n: number): string {
+  if (!Number.isFinite(n) || n === 0) return '0 Ar';
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) {
+    return `${(n / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1).replace('.', ',')} M Ar`;
+  }
+  if (abs >= 100_000) {
+    return `${Math.round(n / 1_000)} K Ar`;
+  }
+  return `${n.toLocaleString('fr-FR')} Ar`;
 }
 
 const styles = StyleSheet.create({
@@ -404,9 +577,15 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   transactionLeft: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    minWidth: 0,
+  },
+  transactionTextWrap: {
+    flex: 1,
+    minWidth: 0,
   },
   transactionIcon: {
     width: 44,
@@ -430,6 +609,9 @@ const styles = StyleSheet.create({
   transactionRight: {
     alignItems: 'flex-end',
     gap: 4,
+    flexShrink: 0,
+    marginLeft: 8,
+    maxWidth: 140,
   },
   transactionAmount: {
     fontSize: 15,
@@ -456,6 +638,21 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
+  },
+  loadingMoreContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 20,
+  },
+  loadingMoreText: {
+    fontSize: 13,
+  },
+  endOfListText: {
+    fontSize: 12,
+    textAlign: 'center',
+    paddingVertical: 20,
   },
   modalOverlay: {
     flex: 1,
@@ -486,13 +683,17 @@ const styles = StyleSheet.create({
   detailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    gap: 12,
   },
   detailLabel: {
     fontSize: 14,
+    flexShrink: 0,
   },
   detailValue: {
     fontSize: 14,
+    flex: 1,
+    textAlign: 'right',
   },
   statusBadge: {
     paddingHorizontal: 10,

@@ -374,6 +374,24 @@ export default function QRPayment() {
     setAmount('');
   };
 
+  /**
+   * Format compact pour les montants Ar — évite le débordement sur la carte
+   * étroite des transactions récentes.
+   *   1 234 567 → "1,2 M Ar" · 125 000 → "125 k Ar" · 5 000 → "5 000 Ar"
+   * On garde le suffixe "Ar" car la carte n'a pas d'autre indicateur de devise.
+   */
+  const formatCompactAr = (n: number): string => {
+    const abs = Math.abs(n);
+    if (abs >= 1_000_000) {
+      const v = n / 1_000_000;
+      return `${v.toFixed(abs >= 10_000_000 ? 0 : 1).replace('.', ',')} M Ar`;
+    }
+    if (abs >= 100_000) {
+      return `${Math.round(n / 1000)} k Ar`;
+    }
+    return formatCurrency(n);
+  };
+
   const formatDate = (input: Date | string | null | undefined) => {
     if (!input) return '';
     const date = input instanceof Date ? input : new Date(input);
@@ -616,17 +634,22 @@ export default function QRPayment() {
                       <View style={[styles.transactionIcon, { backgroundColor: `${iconColor}20` }]}>
                         <Ionicons name={iconName} size={20} color={iconColor} />
                       </View>
-                      <View style={{ flex: 1 }}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={[styles.transactionTitle, { color: colors.text }]} numberOfLines={1}>
                           {title}
                         </Text>
-                        <Text style={[styles.transactionDate, { color: colors.textSecondary }]}>
+                        <Text style={[styles.transactionDate, { color: colors.textSecondary }]} numberOfLines={1}>
                           {formatDate(tx.createdAt ?? tx.date)}
                         </Text>
                       </View>
                     </View>
-                    <Text style={[styles.transactionAmount, { color: amountColor }]}>
-                      {sign}{formatCurrency(amount)}
+                    <Text
+                      style={[styles.transactionAmount, { color: amountColor }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.7}
+                    >
+                      {sign}{formatCompactAr(amount)}
                     </Text>
                   </View>
                 );
@@ -825,11 +848,11 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 16, fontWeight: '600' },
   sectionAction: { fontSize: 13 },
   transactionCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 8 },
-  transactionLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  transactionLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 },
   transactionIcon: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
   transactionTitle: { fontSize: 14, fontWeight: '500' },
   transactionDate: { fontSize: 11, marginTop: 2 },
-  transactionAmount: { fontSize: 14, fontWeight: '600' },
+  transactionAmount: { fontSize: 14, fontWeight: '600', marginLeft: 8, flexShrink: 0, maxWidth: 110, textAlign: 'right' },
   permissionText: { fontSize: 18, fontWeight: '600', marginTop: 20 },
   permissionSubtext: { fontSize: 14, textAlign: 'center', marginHorizontal: 40, marginTop: 10 },
   permissionButton: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 10, marginTop: 20 },
