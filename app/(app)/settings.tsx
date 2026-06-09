@@ -9,13 +9,16 @@ import {
   Switch,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import GradientHeader from '../../src/components/GradientHeader';
 import { useAuth } from '../../src/contexts/AuthContext';
-import { userPreferencesService } from '../../src/services/api';
+import { userPreferencesService, accountService, resolveAssetUrl } from '../../src/services/api';
 import { useBiometric } from '../../src/hooks/useBiometric';
 import { useBiometricGuard } from '../../src/contexts/BiometricGuardContext';
 import { useLocale, Currency } from '../../src/contexts/LocaleContext';
@@ -66,7 +69,7 @@ const DEFAULT_PREFS: Preferences = {
 export default function Settings() {
   const router = useRouter();
   const { colors, isDark, setMode } = useTheme();
-  const { logout, user } = useAuth();
+  const { user } = useAuth();
   const { support: biometricSupport, authenticate: biometricAuth, label: biometricLabel } = useBiometric();
   const { refreshPref: refreshBiometricGuard } = useBiometricGuard();
   const { language, currency, setLanguage, setCurrency, t } = useLocale();
@@ -196,36 +199,70 @@ export default function Settings() {
   const languageLabel = ({ fr: 'Français', en: 'English', mg: 'Malagasy' } as Record<string, string>)[language] || 'Français';
   const currencyLabel = ({ Ar: 'Ar', EUR: '€', USD: '$' } as Record<string, string>)[currency] || 'Ar';
 
+  // === Export RGPD des données ===
+  // Le JSON est récupéré depuis /user/export-data, écrit dans un fichier local
+  // (cacheDirectory pour éviter de polluer le stockage permanent), puis partagé
+  // via la feuille de partage natif (mail, AirDrop, Drive, etc.). En cas
+  // d'absence de partage natif (rare), on garde le fichier accessible et on
+  // affiche son chemin pour fallback.
+  const [exporting, setExporting] = useState(false);
+
+  const performExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const data = await accountService.exportData();
+      const json = JSON.stringify(data, null, 2);
+      const filename = `mpaye-export-${new Date().toISOString().slice(0, 10)}.json`;
+      const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+      await FileSystem.writeAsStringAsync(fileUri, json, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: 'application/json',
+          dialogTitle: 'Exporter mes données M\'Paye',
+          UTI: 'public.json',
+        });
+      } else {
+        Alert.alert(
+          'Export prêt',
+          `Fichier sauvegardé : ${fileUri}\n(Partage natif indisponible sur cet appareil)`,
+        );
+      }
+    } catch (e: any) {
+      Alert.alert(
+        'Erreur',
+        e?.response?.data?.message || "Impossible d'exporter vos données",
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleExportData = () => {
     Alert.alert(
       'Exporter mes données',
-      'Voulez-vous exporter toutes vos données ?',
+      "Vous allez recevoir un fichier JSON contenant l'ensemble de vos données : profil, wallet, transactions, bénéficiaires, sessions, notifications. Aucun mot de passe ni token n'est inclus.",
       [
         { text: 'Annuler', style: 'cancel' },
-        { text: 'Exporter', onPress: () => Alert.alert('Succès', 'Exportation en cours...') },
-      ]
+        { text: 'Exporter', onPress: () => { void performExport(); } },
+      ],
     );
   };
 
-  const handleDeleteAccount = () => {
-    Alert.alert(
-      'Supprimer le compte',
-      'Cette action est irréversible. Voulez-vous vraiment supprimer votre compte ?',
-      [
-        { text: 'Annuler', style: 'cancel' },
-        { 
-          text: 'Supprimer', 
-          style: 'destructive',
-          onPress: () => {
-            Alert.alert('Confirmation', 'Veuillez confirmer la suppression', [
-              { text: 'Annuler', style: 'cancel' },
-              { text: 'Confirmer', onPress: () => logout() },
-            ]);
-          },
-        },
-      ]
-    );
-  };
+  // NOTE — Suppression de compte volontairement absente.
+  // L'ancienne implémentation faisait juste un logout() sous le label "Supprimer"
+  // sans toucher au backend : trompeur pour l'user et juridiquement bancal (RGPD).
+  //
+  // La vraie suppression en fintech exige : pre-checks bloquants (solde > 0,
+  // transactions PENDING, disputes actives), step-up OTP, période de grâce 30j,
+  // job batch d'anonymisation (les transactions doivent rester pour AML/audit
+  // pendant 5-10 ans selon régulation CSBF). À implémenter quand l'effort
+  // (~4-5j backend + front) sera planifié. Pour l'instant l'user peut nous
+  // contacter via le support pour faire valoir son droit à l'oubli.
 
   const settingsSections: SettingSection[] = [
     {
@@ -260,8 +297,14 @@ export default function Settings() {
       title: t('settings.data'),
       icon: 'folder-outline',
       items: [
-        { id: 'export', label: 'Exporter mes données', description: 'Télécharger vos informations', type: 'action', action: handleExportData },
-        { id: 'delete', label: 'Supprimer mon compte', description: 'Supprimer définitivement votre compte', type: 'action', action: handleDeleteAccount },
+        {
+          id: 'export',
+          label: exporting ? 'Export en cours…' : 'Exporter mes données',
+          description: 'JSON complet : profil, transactions, bénéficiaires',
+          type: 'action',
+          action: handleExportData,
+        },
+        // 'Supprimer mon compte' retiré — voir note au-dessus de settingsSections.
       ],
     },
   ];
@@ -288,11 +331,18 @@ export default function Settings() {
           onPress={() => router.push('/complete-profile' as any)}
         >
           <View style={styles.profileLeft}>
-            <View style={[styles.profileAvatar, { backgroundColor: colors.primary }]}>
-              <Text style={styles.profileAvatarText}>
-                {user?.prenom?.[0] || user?.email?.[0] || 'U'}
-              </Text>
-            </View>
+            {user?.avatarUrl ? (
+              <Image
+                source={{ uri: resolveAssetUrl(user.avatarUrl) }}
+                style={styles.profileAvatar}
+              />
+            ) : (
+              <View style={[styles.profileAvatar, { backgroundColor: colors.primary }]}>
+                <Text style={styles.profileAvatarText}>
+                  {user?.prenom?.[0] || user?.email?.[0] || 'U'}
+                </Text>
+              </View>
+            )}
             <View>
               <Text style={[styles.profileName, { color: colors.text }]}>
                 {user?.prenom ? `${user.prenom} ${user.nom || ''}` : user?.email?.split('@')[0] || 'Utilisateur'}

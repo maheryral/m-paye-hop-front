@@ -1,9 +1,10 @@
 // app/(app)/_layout.tsx
 import { Drawer } from 'expo-router/drawer';
 import { Ionicons } from '@expo/vector-icons';
-import { TouchableOpacity, Text, StyleSheet, Alert, View, ScrollView, ActivityIndicator } from 'react-native';
+import { TouchableOpacity, Text, StyleSheet, Alert, View, ScrollView, ActivityIndicator, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/contexts/AuthContext';
+import { resolveAssetUrl } from '../../src/services/api';
 import { secureStorage } from '../../src/services/secureStorage';
 import { useState, useEffect } from 'react';
 
@@ -226,10 +227,17 @@ function CustomDrawerContent({ navigation }: any) {
 
       <TouchableOpacity onPress={goToProfile} style={styles.userInfo} activeOpacity={0.7}>
         <View style={styles.avatar}>
-          <Text style={styles.avatarText}>
-            {user?.prenom?.[0] || user?.email?.[0] || 'U'}
-            {user?.nom?.[0] || ''}
-          </Text>
+          {user?.avatarUrl ? (
+            <Image
+              source={{ uri: resolveAssetUrl(user.avatarUrl) }}
+              style={styles.avatarImage}
+            />
+          ) : (
+            <Text style={styles.avatarText}>
+              {user?.prenom?.[0] || user?.email?.[0] || 'U'}
+              {user?.nom?.[0] || ''}
+            </Text>
+          )}
           <View style={styles.onlineBadge} />
         </View>
         <View style={styles.userInfoText}>
@@ -493,6 +501,15 @@ export default function AppLayout() {
       <Drawer.Screen name="history" options={{ title: 'Historique' }} />
       <Drawer.Screen name="bills" options={{ title: 'Services' }} />
       <Drawer.Screen
+        name="vehicle-rentals"
+        options={{
+          title: 'Location voiture',
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="car-sport-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Drawer.Screen
         name="transport-scolaire"
         options={{ title: 'Transport scolaire', drawerItemStyle: { display: 'none' } }}
       />
@@ -556,8 +573,9 @@ const styles = StyleSheet.create({
   switchingText: { color: '#fff', fontSize: 18, fontWeight: '600', marginTop: 20 },
   switchingSubText: { color: '#94a3b8', fontSize: 14, marginTop: 8 },
   userInfo: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 16, backgroundColor: '#33415530', marginHorizontal: 16, marginTop: 16, marginBottom: 8, borderRadius: 16, borderWidth: 1, borderColor: '#334155' },
-  avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#1e40af', justifyContent: 'center', alignItems: 'center', position: 'relative' },
+  avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#1e40af', justifyContent: 'center', alignItems: 'center', position: 'relative', overflow: 'hidden' },
   avatarText: { color: '#fff', fontSize: 22, fontWeight: 'bold' },
+  avatarImage: { width: '100%', height: '100%' },
   onlineBadge: { position: 'absolute', bottom: 2, right: 2, width: 12, height: 12, borderRadius: 6, backgroundColor: '#3b82f6', borderWidth: 2, borderColor: '#1e293b' },
   userInfoText: { flex: 1, marginLeft: 12 },
   userName: { color: '#fff', fontSize: 16, fontWeight: '600', marginBottom: 2 },

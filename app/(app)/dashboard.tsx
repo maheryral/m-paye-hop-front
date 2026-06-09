@@ -29,6 +29,7 @@ import {
   billersApi,
   type PublicBiller,
 } from '../../src/services/billersApi';
+import { resolveAssetUrl } from '../../src/services/api';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -432,9 +433,16 @@ export default function Dashboard() {
   const renderProfileSection = () => (
     <View style={styles.section}>
       <View style={styles.profileHeader}>
-        <View style={[styles.profileAvatar, { backgroundColor: colors.primary }]}>
-          <Text style={styles.profileAvatarText}>{user?.prenom?.[0] || user?.email?.[0] || 'U'}</Text>
-        </View>
+        {user?.avatarUrl ? (
+          <Image
+            source={{ uri: resolveAssetUrl(user.avatarUrl) }}
+            style={styles.profileAvatar}
+          />
+        ) : (
+          <View style={[styles.profileAvatar, { backgroundColor: colors.primary }]}>
+            <Text style={styles.profileAvatarText}>{user?.prenom?.[0] || user?.email?.[0] || 'U'}</Text>
+          </View>
+        )}
         <View>
           <Text style={[styles.profileName, { color: colors.text }]}>
             {user?.prenom ? `${user.prenom} ${user.nom}` : user?.email?.split('@')[0]}

@@ -17,6 +17,10 @@ interface User {
   telephone?: string;
   kycLevel: string;
   isActive: boolean;
+  /** Vrai si l'utilisateur a déjà défini un mot de passe (inscription OTP → false). */
+  hasPassword?: boolean;
+  /** URL relative ou absolue de la photo de profil (servie par /uploads/avatars/users/...). */
+  avatarUrl?: string | null;
 }
 
 interface RegisterData {
@@ -97,7 +101,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // (cas typique : tokens wipés par un précédent refresh KO, mais user
       // resté dans AsyncStorage → faux état authentifié qui spam des 401).
       if (accessToken && refreshToken && storedUser) {
-        setUser(JSON.parse(storedUser));
+        const parsed = JSON.parse(storedUser) as User;
+        setUser(parsed);
+        // Rafraîchit le profil en arrière-plan pour mettre à jour les champs
+        // qui peuvent avoir changé (hasPassword, kycLevel, etc.) — utile pour
+        // les comptes anciens stockés avant l'ajout du flag hasPassword.
+        // Best-effort : si KO (offline, 401), on garde le user du cache.
+        void refreshUserFromProfile(parsed);
       } else if (storedUser || accessToken || refreshToken) {
         // État partiel détecté → on nettoie pour repartir propre
         await clearSession();
@@ -106,6 +116,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Erreur chargement user:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  /**
+   * Récupère le profil complet depuis /user/profile et merge dans le user
+   * local. Évite que des champs ajoutés au backend (ex: hasPassword) restent
+   * absents pour les comptes dont la session a été créée avant.
+   */
+  const refreshUserFromProfile = async (current: User) => {
+    try {
+      // getProfile vit dans accountService — historique du codebase.
+      const { accountService } = await import('../services/api');
+      const profile = await accountService.getProfile();
+      if (!profile) return;
+      const merged: User = {
+        ...current,
+        // Champs qu'on accepte de rafraîchir depuis le profil.
+        kycLevel: profile.kycLevel ?? current.kycLevel,
+        isActive: profile.isActive ?? current.isActive,
+        hasPassword: profile.hasPassword ?? current.hasPassword,
+        avatarUrl: profile.avatarUrl ?? current.avatarUrl,
+      };
+      setUser(merged);
+      await AsyncStorage.setItem('user', JSON.stringify(merged));
+    } catch {
+      // Silent : pas critique, on garde le cache local
     }
   };
 

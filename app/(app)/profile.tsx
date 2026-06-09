@@ -11,13 +11,15 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import GradientHeader from '../../src/components/GradientHeader';
 import { useAuth } from '../../src/contexts/AuthContext';
-import { accountService } from '../../src/services/api';
+import { accountService, resolveAssetUrl } from '../../src/services/api';
 import { useLocale } from '../../src/contexts/LocaleContext';
 
 type KycLevel = 'BASIC' | 'INTERMEDIATE' | 'ADVANCED';
@@ -123,6 +125,79 @@ export default function Profile() {
   useEffect(() => {
     loadProfile();
   }, [loadProfile]);
+
+  // === Photo de profil ===
+  // L'avatar est cliquable : ouvre un menu (Choisir une photo / Retirer).
+  // Upload optimiste : on met à jour l'user du context dès que le backend répond.
+  const [avatarUploading, setAvatarUploading] = useState(false);
+
+  const handlePickAvatar = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert(
+        'Permission requise',
+        "Autorisez M'Paye à accéder à vos photos pour changer votre photo de profil.",
+      );
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (result.canceled || !result.assets?.length) return;
+    const asset = result.assets[0];
+
+    setAvatarUploading(true);
+    try {
+      const updated = await accountService.uploadAvatar({
+        uri: asset.uri,
+        name: asset.fileName || 'avatar.jpg',
+        type: asset.mimeType || 'image/jpeg',
+      });
+      // Propage la nouvelle URL dans le AuthContext (donc partout dans l'app).
+      await updateUser({ avatarUrl: updated.avatarUrl });
+    } catch (e: any) {
+      Alert.alert(
+        'Erreur',
+        e?.response?.data?.message || "Impossible d'envoyer la photo.",
+      );
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    setAvatarUploading(true);
+    try {
+      const updated = await accountService.removeAvatar();
+      await updateUser({ avatarUrl: updated.avatarUrl ?? null });
+    } catch (e: any) {
+      Alert.alert(
+        'Erreur',
+        e?.response?.data?.message || 'Action impossible.',
+      );
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  /** Ouvre le menu d'actions sur l'avatar (Alert natif — pas besoin de modal). */
+  const openAvatarMenu = () => {
+    const options: any[] = [
+      { text: 'Annuler', style: 'cancel' },
+      { text: 'Choisir une photo', onPress: handlePickAvatar },
+    ];
+    if (user?.avatarUrl) {
+      options.push({
+        text: 'Retirer la photo',
+        style: 'destructive',
+        onPress: handleRemoveAvatar,
+      });
+    }
+    Alert.alert('Photo de profil', 'Que souhaitez-vous faire ?', options);
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -290,15 +365,37 @@ export default function Profile() {
         }
       >
         <View style={styles.content}>
-          {/* Avatar + nom */}
+          {/* Avatar + nom — avatar cliquable pour ouvrir le menu photo */}
           <View style={styles.avatarContainer}>
-            <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
-              <Text style={styles.avatarText}>{getInitials()}</Text>
+            <TouchableOpacity
+              onPress={openAvatarMenu}
+              activeOpacity={0.85}
+              disabled={avatarUploading}
+              style={[styles.avatar, { backgroundColor: colors.primary }]}
+            >
+              {user?.avatarUrl ? (
+                <Image
+                  source={{ uri: resolveAssetUrl(user.avatarUrl) }}
+                  style={styles.avatarImage}
+                />
+              ) : (
+                <Text style={styles.avatarText}>{getInitials()}</Text>
+              )}
+
+              {/* Overlay caméra — visible toujours pour suggérer le clic */}
+              <View style={styles.avatarCameraOverlay}>
+                {avatarUploading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Ionicons name="camera" size={14} color="#fff" />
+                )}
+              </View>
+
               {/* Badge niveau KYC sur l'avatar */}
               <View style={[styles.avatarBadge, { backgroundColor: kycMeta.color, borderColor: colors.background }]}>
                 <Ionicons name={kycMeta.icon} size={14} color="#fff" />
               </View>
-            </View>
+            </TouchableOpacity>
             <Text style={[styles.userName, { color: colors.text }]}>{getFullName()}</Text>
             <Text style={[styles.userEmail, { color: colors.textSecondary }]}>{formData.email}</Text>
             {memberSince && (
@@ -456,8 +553,21 @@ const styles = StyleSheet.create({
     width: 100, height: 100, borderRadius: 50,
     justifyContent: 'center', alignItems: 'center', marginBottom: 16,
     position: 'relative',
+    overflow: 'hidden',
   },
   avatarText: { color: '#fff', fontSize: 40, fontWeight: 'bold' },
+  avatarImage: { width: '100%', height: '100%' },
+  avatarCameraOverlay: {
+    position: 'absolute',
+    right: 4,
+    top: 4,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   avatarBadge: {
     position: 'absolute', bottom: 0, right: 0,
     width: 30, height: 30, borderRadius: 15,

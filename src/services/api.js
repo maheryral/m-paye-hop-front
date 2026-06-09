@@ -118,6 +118,12 @@ export const authService = {
   revokeDevice: (deviceId) => api.post('/auth/sessions/revoke', { deviceId }).then(res => res.data),
   getCurrentUser: () => api.get('/auth/me').then(res => res.data),
   changePassword: (data) => api.post('/auth/change-password', data).then(res => res.data),
+  /**
+   * Step-up auth : envoie un OTP au téléphone du user pour autoriser la
+   * création initiale de son mot de passe. Refuse si l'user en a déjà un.
+   */
+  sendPasswordSetupOtp: () =>
+    api.post('/auth/send-password-setup-otp').then(res => res.data),
 
   checkAccount: (data) => api.post('/auth/check-account', data).then(res => res.data),
 
@@ -145,6 +151,34 @@ export const accountService = {
   // Retraits via payment-requests. Les anciens /wallet/{deposit,withdraw} ont été retirés.
   getProfile: () => api.get('/user/profile').then(res => res.data),
   updateProfile: (data) => api.patch('/user/profile', data).then(res => res.data),
+  /**
+   * Score de sécurité du compte, calculé serveur.
+   * Retourne `{ score: 0-100, level: 'weak'|'fair'|'good'|'excellent', components: [...] }`.
+   */
+  getSecurityScore: () => api.get('/user/security-score').then(res => res.data),
+  /**
+   * Export RGPD complet (profil, transactions, bénéficiaires, etc.) au format JSON.
+   * Le client est responsable de sauvegarder/partager le résultat.
+   */
+  exportData: () => api.get('/user/export-data').then(res => res.data),
+  /**
+   * Upload de la photo de profil — multipart/form-data.
+   * @param {{uri:string, name?:string, type?:string}} file
+   */
+  uploadAvatar: (file) => {
+    const form = new FormData();
+    form.append('file', {
+      uri: file.uri,
+      name: file.name || 'avatar.jpg',
+      type: file.type || 'image/jpeg',
+    });
+    return api
+      .post('/user/avatar', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then(res => res.data);
+  },
+  removeAvatar: () => api.delete('/user/avatar').then(res => res.data),
 };
 
 export const transactionService = {
@@ -219,6 +253,32 @@ export const resolveAssetUrl = (relativeOrAbsolute) => {
  *  - GET   /qr/info/:reference  (public, pour preview avant paiement)
  *  - POST  /qr/pay/:reference   (payeur auth, idempotency-key header)
  */
+/**
+ * Location de voiture — marketplace multi-partenaires (phase 1 : lecture seule).
+ * Pas d'auth requise pour search/detail. La réservation viendra en phase 2.
+ */
+export const vehicleRentalService = {
+  // Public
+  search: (params) => api.get('/vehicle-rentals', { params }).then(res => res.data),
+  detail: (id) => api.get(`/vehicle-rentals/${id}`).then(res => res.data),
+  cities: () => api.get('/vehicle-rentals/cities').then(res => res.data),
+
+  // Booking — JWT requis (interceptor ajoute le token automatiquement)
+  /**
+   * @param {string} listingId
+   * @param {{ startDate: string; endDate: string }} payload
+   */
+  book: (listingId, payload) =>
+    api.post(`/vehicle-rentals/${listingId}/book`, payload).then(res => res.data),
+  pay: (bookingId) =>
+    api.post(`/vehicle-rentals/bookings/${bookingId}/pay`).then(res => res.data),
+  myBookings: () =>
+    api.get('/vehicle-rentals/bookings/me').then(res => res.data),
+  cancelBooking: (bookingId, note) =>
+    api.patch(`/vehicle-rentals/bookings/${bookingId}/cancel`, { note })
+      .then(res => res.data),
+};
+
 export const qrService = {
   // Marchand : génère un QR.
   //  - montant (obligatoire)

@@ -9,13 +9,14 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import GradientHeader from '../../src/components/GradientHeader';
 import { useAuth } from '../../src/contexts/AuthContext';
-import { authService } from '../../src/services/api';
+import { authService, accountService } from '../../src/services/api';
 
 interface SecurityItem {
   id: string;
@@ -46,13 +47,22 @@ interface Session {
 export default function Security() {
   const router = useRouter();
   const { colors } = useTheme();
-  const { user, logoutAllDevices } = useAuth();
+  const { user, logoutAllDevices, updateUser } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Step-up OTP — utilisé pour 2 cas :
+  //  - Création initiale du mdp (compte OTP, hasPassword=false)
+  //  - Réinitialisation (user qui a oublié son mdp) — `resetMode=true`
+  // Empêche un JWT volé de verrouiller le compte avec un mdp inconnu.
+  const [otpModalOpen, setOtpModalOpen] = useState(false);
+  const [otpInput, setOtpInput] = useState('');
+  const [otpSending, setOtpSending] = useState(false);
+  const [resetMode, setResetMode] = useState(false);
 
   const [securityItems, setSecurityItems] = useState<SecurityItem[]>([
     { id: '2fa', name: 'Authentification à 2 facteurs', description: 'Ajoutez une couche de sécurité supplémentaire', icon: 'lock-closed-outline', status: false, action: 'Activer' },
@@ -74,35 +84,184 @@ export default function Security() {
     }
   };
 
+  // === Score de sécurité dynamique (calculé serveur) ===
+  type SecurityComponent = {
+    id: string;
+    label: string;
+    weight: number;
+    achieved: boolean;
+    hint?: string;
+  };
+  type SecurityScoreData = {
+    score: number;
+    level: 'weak' | 'fair' | 'good' | 'excellent';
+    components: SecurityComponent[];
+  };
+  const [scoreData, setScoreData] = useState<SecurityScoreData | null>(null);
+  const [scoreLoading, setScoreLoading] = useState(true);
+
+  const loadSecurityScore = async () => {
+    try {
+      setScoreLoading(true);
+      const data = await accountService.getSecurityScore();
+      setScoreData(data);
+    } catch {
+      // Fallback silencieux : on n'affiche rien plutôt qu'un faux score
+    } finally {
+      setScoreLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadSessions();
+    loadSecurityScore();
   }, []);
 
-  const securityScore = 75;
+  // Le score local est ce que le backend renvoie ; defaut 0 le temps du chargement.
+  const securityScore = scoreData?.score ?? 0;
+
+  /** Couleur dérivée du niveau retourné par le serveur. */
+  const scoreColor =
+    scoreData?.level === 'excellent'
+      ? colors.success
+      : scoreData?.level === 'good'
+      ? colors.success
+      : scoreData?.level === 'fair'
+      ? '#f59e0b'
+      : colors.error;
+
+  const scoreSubtitle =
+    scoreData?.level === 'excellent'
+      ? 'Votre compte est parfaitement protégé'
+      : scoreData?.level === 'good'
+      ? 'Votre compte est bien protégé'
+      : scoreData?.level === 'fair'
+      ? 'Votre compte peut être renforcé'
+      : 'Votre compte est vulnérable — agissez maintenant';
+
+  // Inscription OTP → `user.hasPassword=false` → mode "Création" (sans currentPassword).
+  // Sinon → mode "Modification" (3 champs).
+  const hasPassword = !!user?.hasPassword;
+
+  /**
+   * Validation locale partagée. En mode reset, on ignore le champ currentPassword
+   * car l'user ne s'en souvient justement pas — l'OTP est sa preuve.
+   */
+  const validatePasswordInputs = (): string | null => {
+    if (hasPassword && !resetMode && !currentPassword) return 'Mot de passe actuel requis';
+    if (!newPassword || !confirmPassword) return 'Veuillez remplir tous les champs';
+    if (newPassword.length < 8) return 'Le mot de passe doit contenir au moins 8 caractères';
+    if (!/^(?=.*[A-Za-z])(?=.*\d).+$/.test(newPassword))
+      return 'Le mot de passe doit contenir au moins une lettre et un chiffre';
+    if (newPassword !== confirmPassword) return 'Les mots de passe ne correspondent pas';
+    return null;
+  };
 
   const handleChangePassword = async () => {
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      setMessage({ type: 'error', text: 'Veuillez remplir tous les champs' });
-      return;
-    }
-    if (newPassword.length < 6) {
-      setMessage({ type: 'error', text: 'Le mot de passe doit contenir au moins 6 caractères' });
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setMessage({ type: 'error', text: 'Les mots de passe ne correspondent pas' });
+    const err = validatePasswordInputs();
+    if (err) {
+      setMessage({ type: 'error', text: err });
       return;
     }
 
+    // === Chemin OTP (Création OU Réinitialisation) ===
+    if (!hasPassword || resetMode) {
+      setOtpSending(true);
+      try {
+        await authService.sendPasswordSetupOtp();
+        setOtpInput('');
+        setOtpModalOpen(true);
+      } catch (e: any) {
+        setMessage({
+          type: 'error',
+          text: e?.response?.data?.message || "Impossible d'envoyer le code SMS",
+        });
+        setTimeout(() => setMessage(null), 3000);
+      } finally {
+        setOtpSending(false);
+      }
+      return;
+    }
+
+    // === Chemin MODIFICATION standard (currentPassword) ===
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      await authService.changePassword({ currentPassword, newPassword });
       setMessage({ type: 'success', text: 'Mot de passe mis à jour avec succès' });
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+    } catch (e: any) {
+      setMessage({
+        type: 'error',
+        text: e?.response?.data?.message || 'Échec de la mise à jour du mot de passe',
+      });
+    } finally {
+      setLoading(false);
       setTimeout(() => setMessage(null), 3000);
-    }, 1500);
+    }
+  };
+
+  /**
+   * Soumet l'opération mdp (création/reset) après saisie de l'OTP step-up.
+   * Garde le modal ouvert si l'OTP est invalide pour permettre une nouvelle saisie.
+   */
+  const submitCreationWithOtp = async () => {
+    if (!/^\d{6}$/.test(otpInput)) {
+      setMessage({ type: 'error', text: 'Code à 6 chiffres requis' });
+      return;
+    }
+    setLoading(true);
+    try {
+      await authService.changePassword({ otpCode: otpInput, newPassword });
+      if (user && !hasPassword) await updateUser({ hasPassword: true });
+      const successMsg = resetMode
+        ? 'Mot de passe réinitialisé avec succès'
+        : 'Mot de passe créé avec succès';
+      setMessage({ type: 'success', text: successMsg });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setOtpInput('');
+      setOtpModalOpen(false);
+      setResetMode(false);
+    } catch (e: any) {
+      setMessage({
+        type: 'error',
+        text: e?.response?.data?.message || 'Code invalide ou expiré',
+      });
+    } finally {
+      setLoading(false);
+      setTimeout(() => setMessage(null), 3000);
+    }
+  };
+
+  /** Re-déclenche l'envoi du SMS — utile si le user n'a rien reçu. */
+  const resendSetupOtp = async () => {
+    setOtpSending(true);
+    try {
+      await authService.sendPasswordSetupOtp();
+      setMessage({ type: 'success', text: 'Nouveau code envoyé par SMS' });
+    } catch (e: any) {
+      setMessage({
+        type: 'error',
+        text: e?.response?.data?.message || 'Impossible de renvoyer le code',
+      });
+    } finally {
+      setOtpSending(false);
+      setTimeout(() => setMessage(null), 3000);
+    }
+  };
+
+  /** Bascule en mode "Réinitialisation" : cache currentPassword, vide le champ. */
+  const triggerResetMode = () => {
+    setResetMode(true);
+    setCurrentPassword('');
+    setMessage({
+      type: 'success',
+      text: "Mode réinitialisation : un SMS vous sera envoyé pour confirmer.",
+    });
+    setTimeout(() => setMessage(null), 4000);
   };
 
   const toggleSecurityItem = (id: string) => {
@@ -204,48 +363,118 @@ export default function Security() {
           </View>
         )}
 
-        {/* Security Score */}
+        {/* Security Score — calculé serveur, mis à jour à chaque ouverture
+            de la page. La liste des composants permet à l'user de savoir
+            exactement quoi améliorer pour gagner des points. */}
         <View style={[styles.scoreCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.scoreHeader}>
             <View style={styles.scoreTitleContainer}>
-              <Ionicons name="shield-checkmark" size={20} color={colors.success} />
+              <Ionicons name="shield-checkmark" size={20} color={scoreColor} />
               <Text style={[styles.scoreTitle, { color: colors.text }]}>Score de sécurité</Text>
             </View>
-            <Text style={[styles.scoreValue, { color: colors.success }]}>{securityScore}/100</Text>
+            {scoreLoading ? (
+              <ActivityIndicator size="small" color={colors.textSecondary} />
+            ) : (
+              <Text style={[styles.scoreValue, { color: scoreColor }]}>
+                {securityScore}/100
+              </Text>
+            )}
           </View>
           <View style={styles.progressBar}>
-            <View style={[styles.progressFill, { width: `${securityScore}%`, backgroundColor: colors.success }]} />
+            <View
+              style={[
+                styles.progressFill,
+                { width: `${securityScore}%`, backgroundColor: scoreColor },
+              ]}
+            />
           </View>
           <Text style={[styles.scoreText, { color: colors.textSecondary }]}>
-            {securityScore >= 80 ? 'Votre compte est très bien protégé' :
-             securityScore >= 50 ? 'Votre compte est bien protégé' :
-             'Améliorez votre sécurité en complétant votre profil'}
+            {scoreSubtitle}
           </Text>
+
+          {/* Détail des composants — uniquement quand on a la donnée */}
+          {scoreData && (
+            <View style={styles.scoreComponents}>
+              {scoreData.components.map((c) => (
+                <View key={c.id} style={styles.scoreComponent}>
+                  <Ionicons
+                    name={c.achieved ? 'checkmark-circle' : 'close-circle-outline'}
+                    size={16}
+                    color={c.achieved ? colors.success : colors.textSecondary}
+                  />
+                  <View style={styles.scoreComponentText}>
+                    <Text
+                      style={[
+                        styles.scoreComponentLabel,
+                        { color: c.achieved ? colors.text : colors.textSecondary },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {c.label}
+                    </Text>
+                    {!c.achieved && c.hint && (
+                      <Text style={[styles.scoreComponentHint, { color: colors.textSecondary }]}>
+                        {c.hint}
+                      </Text>
+                    )}
+                  </View>
+                  <Text style={[styles.scoreComponentWeight, { color: colors.textSecondary }]}>
+                    +{c.weight}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
 
-        {/* Change Password */}
+        {/* Change Password — 3 modes :
+            • Création (hasPassword=false) : OTP step-up
+            • Modification (hasPassword=true, !resetMode) : currentPassword
+            • Réinitialisation (hasPassword=true, resetMode) : OTP step-up (mdp oublié) */}
         <View style={[styles.passwordCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.passwordHeader}>
             <Ionicons name="key-outline" size={20} color={colors.primary} />
-            <Text style={[styles.passwordTitle, { color: colors.text }]}>Changer le mot de passe</Text>
+            <Text style={[styles.passwordTitle, { color: colors.text }]}>
+              {!hasPassword
+                ? 'Créer un mot de passe'
+                : resetMode
+                ? 'Réinitialiser le mot de passe'
+                : 'Modifier le mot de passe'}
+            </Text>
           </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Mot de passe actuel</Text>
-            <View style={[styles.passwordInputContainer, { borderColor: colors.border }]}>
-              <TextInput
-                style={[styles.passwordInput, { color: colors.text }]}
-                placeholder="••••••••"
-                placeholderTextColor={colors.textSecondary}
-                value={currentPassword}
-                onChangeText={setCurrentPassword}
-                secureTextEntry={!showPassword}
-              />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color={colors.textSecondary} />
-              </TouchableOpacity>
+          {!hasPassword && (
+            <Text style={[styles.passwordHint, { color: colors.textSecondary }]}>
+              Votre compte n'a pas encore de mot de passe. En créer un permet de
+              vous connecter sans attendre le code SMS.
+            </Text>
+          )}
+
+          {hasPassword && resetMode && (
+            <Text style={[styles.passwordHint, { color: colors.textSecondary }]}>
+              Un code SMS sera envoyé à {user?.telephone || 'votre numéro'} pour
+              confirmer la réinitialisation.
+            </Text>
+          )}
+
+          {hasPassword && !resetMode && (
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Mot de passe actuel</Text>
+              <View style={[styles.passwordInputContainer, { borderColor: colors.border }]}>
+                <TextInput
+                  style={[styles.passwordInput, { color: colors.text }]}
+                  placeholder="••••••••"
+                  placeholderTextColor={colors.textSecondary}
+                  value={currentPassword}
+                  onChangeText={setCurrentPassword}
+                  secureTextEntry={!showPassword}
+                />
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                  <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          )}
 
           <View style={styles.inputGroup}>
             <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Nouveau mot de passe</Text>
@@ -269,19 +498,64 @@ export default function Security() {
               onChangeText={setConfirmPassword}
               secureTextEntry
             />
-          </View> 
+          </View>
 
           <TouchableOpacity
             style={[styles.updateButton, { backgroundColor: colors.primary }]}
             onPress={handleChangePassword}
-            disabled={loading}
+            disabled={loading || otpSending}
           >
-            {loading ? (
+            {loading || otpSending ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.updateButtonText}>Mettre à jour</Text>
+              <Text style={styles.updateButtonText}>
+                {!hasPassword
+                  ? 'Créer le mot de passe'
+                  : resetMode
+                  ? 'Envoyer le code SMS'
+                  : 'Mettre à jour'}
+              </Text>
             )}
           </TouchableOpacity>
+
+          {/* Bouton secondaire "Réinitialiser via SMS" — visible uniquement en
+              mode Modification, pour les users qui ont oublié leur mdp.
+              Plus discoverable qu'un simple lien sous le champ currentPassword. */}
+          {hasPassword && !resetMode && (
+            <>
+              <View style={styles.orDivider}>
+                <View style={[styles.orLine, { backgroundColor: colors.border }]} />
+                <Text style={[styles.orText, { color: colors.textSecondary }]}>ou</Text>
+                <View style={[styles.orLine, { backgroundColor: colors.border }]} />
+              </View>
+              <TouchableOpacity
+                onPress={triggerResetMode}
+                style={[styles.secondaryButton, { borderColor: colors.primary }]}
+                disabled={loading || otpSending}
+              >
+                <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.primary} />
+                <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>
+                  Réinitialiser via code SMS
+                </Text>
+              </TouchableOpacity>
+              <Text style={[styles.secondaryHint, { color: colors.textSecondary }]}>
+                Vous avez oublié votre mot de passe ? Recevez un code par SMS
+                pour le réinitialiser.
+              </Text>
+            </>
+          )}
+
+          {hasPassword && resetMode && (
+            <TouchableOpacity
+              onPress={() => setResetMode(false)}
+              hitSlop={6}
+              style={styles.forgotPwdLink}
+            >
+              <Text style={[styles.forgotPwdText, { color: colors.textSecondary }]}>
+                ← Annuler, je veux modifier avec mon mot de passe actuel
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Security Items */}
@@ -467,6 +741,65 @@ export default function Security() {
         </View>
         </View>
       </ScrollView>
+
+      {/* Modal step-up OTP : création initiale de mdp seulement. */}
+      <Modal
+        visible={otpModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setOtpModalOpen(false)}
+      >
+        <View style={styles.otpOverlay}>
+          <View style={[styles.otpSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.otpHeader}>
+              <Ionicons name="shield-checkmark" size={22} color={colors.primary} />
+              <Text style={[styles.otpTitle, { color: colors.text }]}>
+                Confirmer la création
+              </Text>
+              <TouchableOpacity onPress={() => setOtpModalOpen(false)} hitSlop={8}>
+                <Ionicons name="close" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.otpDescription, { color: colors.textSecondary }]}>
+              Un code à 6 chiffres a été envoyé par SMS à {user?.telephone || 'votre numéro'}.
+              Cette étape protège votre compte contre les accès non autorisés.
+            </Text>
+
+            <TextInput
+              style={[
+                styles.otpInput,
+                { backgroundColor: colors.background, borderColor: colors.border, color: colors.text },
+              ]}
+              placeholder="123456"
+              placeholderTextColor={colors.textSecondary}
+              keyboardType="number-pad"
+              maxLength={6}
+              value={otpInput}
+              onChangeText={(t) => setOtpInput(t.replace(/\D/g, ''))}
+              autoFocus
+            />
+
+            <TouchableOpacity
+              style={[styles.updateButton, { backgroundColor: colors.primary }]}
+              onPress={submitCreationWithOtp}
+              disabled={loading || otpInput.length !== 6}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.updateButtonText}>Créer le mot de passe</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={resendSetupOtp} disabled={otpSending} style={styles.otpResend}>
+              <Text style={[styles.otpResendText, { color: colors.primary }]}>
+                {otpSending ? 'Envoi…' : 'Renvoyer le code'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -549,6 +882,38 @@ const styles = StyleSheet.create({
   scoreText: {
     fontSize: 12,
   },
+  // === Détail des composants du score ===
+  scoreComponents: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(127,127,127,0.18)',
+    gap: 10,
+  },
+  scoreComponent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  scoreComponentText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  scoreComponentLabel: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  scoreComponentHint: {
+    fontSize: 11,
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  scoreComponentWeight: {
+    fontSize: 11,
+    fontWeight: '700',
+    minWidth: 28,
+    textAlign: 'right',
+  },
   // ✅ AJOUTER CE STYLE MANQUANT
   passwordCard: {
     padding: 16,
@@ -565,6 +930,113 @@ const styles = StyleSheet.create({
   },
   passwordTitle: {
     fontSize: 16,
+    fontWeight: '600',
+  },
+  passwordHint: {
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: 12,
+    marginTop: -2,
+  },
+  forgotPwdLink: {
+    alignSelf: 'center',
+    paddingVertical: 10,
+    marginTop: 4,
+  },
+  forgotPwdText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  // === Séparateur "ou" entre les 2 chemins (modifier / réinitialiser) ===
+  orDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 16,
+    marginBottom: 12,
+  },
+  orLine: {
+    flex: 1,
+    height: 1,
+  },
+  orText: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  // === Bouton secondaire "Réinitialiser via SMS" ===
+  secondaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    backgroundColor: 'transparent',
+  },
+  secondaryButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  secondaryHint: {
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 8,
+    textAlign: 'center',
+    paddingHorizontal: 8,
+  },
+  // === Modal step-up OTP (création mdp) ===
+  otpOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  otpSheet: {
+    width: '100%',
+    maxWidth: 380,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 18,
+  },
+  otpHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 10,
+  },
+  otpTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    flex: 1,
+  },
+  otpDescription: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 14,
+  },
+  otpInput: {
+    height: 52,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    fontSize: 22,
+    letterSpacing: 8,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 14,
+  },
+  otpResend: {
+    alignSelf: 'center',
+    paddingVertical: 10,
+    marginTop: 6,
+  },
+  otpResendText: {
+    fontSize: 13,
     fontWeight: '600',
   },
   inputGroup: {

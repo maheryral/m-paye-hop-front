@@ -171,7 +171,20 @@ const verifyOTP = async () => {
       const identifier = loginMode === 'phone' ? getFullPhoneNumber() : email;
       await login(identifier, password);
       router.replace('/(app)/dashboard');
-    } catch (error) {
+    } catch (error: any) {
+      // Cas spécifique : l'user n'a jamais créé de mot de passe (inscription OTP).
+      // Le backend renvoie `{ nopassword: true }` — on bascule automatiquement
+      // vers le flow OTP plutôt que d'afficher "Mot de passe incorrect" qui
+      // serait trompeur (l'user n'en a tout simplement pas).
+      const data = error?.response?.data;
+      if (data?.nopassword) {
+        showError('Aucun mot de passe défini sur ce compte. Envoi du code SMS…');
+        // Petit délai pour que l'user lise le message avant la transition
+        setTimeout(() => {
+          sendOTP();
+        }, 800);
+        return;
+      }
       showError('Mot de passe incorrect');
     } finally {
       setLoading(false);
@@ -385,8 +398,16 @@ const verifyOTP = async () => {
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity style={styles.forgotPasswordButton}>
-        <Text style={styles.forgotPasswordText}>Mot de passe oublié ?</Text>
+      {/* Mot de passe oublié → bascule sur le flow OTP. L'user se connecte
+          par SMS, puis pourra réinitialiser depuis Paramètres > Sécurité. */}
+      <TouchableOpacity
+        style={styles.forgotPasswordButton}
+        onPress={sendOTP}
+        disabled={loading}
+      >
+        <Text style={styles.forgotPasswordText}>
+          Mot de passe oublié ? Connectez-vous par SMS
+        </Text>
       </TouchableOpacity>
 
       <TouchableOpacity
