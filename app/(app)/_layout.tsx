@@ -510,6 +510,15 @@ export default function AppLayout() {
         }}
       />
       <Drawer.Screen
+        name="tontines"
+        options={{
+          title: 'Tontines',
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="people-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Drawer.Screen
         name="transport-scolaire"
         options={{ title: 'Transport scolaire', drawerItemStyle: { display: 'none' } }}
       />

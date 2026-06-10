@@ -254,6 +254,28 @@ export const resolveAssetUrl = (relativeOrAbsolute) => {
  *  - POST  /qr/pay/:reference   (payeur auth, idempotency-key header)
  */
 /**
+ * Tontines — épargne collective rotative (vakana). Tous les endpoints
+ * exigent un JWT (interceptor l'ajoute automatiquement).
+ */
+export const tontineService = {
+  list: () => api.get('/tontines').then(r => r.data),
+  detail: (id) => api.get(`/tontines/${id}`).then(r => r.data),
+  create: (data) => api.post('/tontines', data).then(r => r.data),
+  joinByCode: (inviteCode) => api.post('/tontines/join', { inviteCode }).then(r => r.data),
+  invite: (id, identifiers) => api.post(`/tontines/${id}/invite`, { identifiers }).then(r => r.data),
+  accept: (id) => api.patch(`/tontines/${id}/accept`).then(r => r.data),
+  decline: (id) => api.patch(`/tontines/${id}/decline`).then(r => r.data),
+  leave: (id) => api.patch(`/tontines/${id}/leave`).then(r => r.data),
+  cancel: (id) => api.delete(`/tontines/${id}`).then(r => r.data),
+
+  // Rounds (Phase 2)
+  listRounds: (id) => api.get(`/tontines/${id}/rounds`).then(r => r.data),
+  getRound: (id, roundId) => api.get(`/tontines/${id}/rounds/${roundId}`).then(r => r.data),
+  retryRound: (id, roundId) =>
+    api.post(`/tontines/${id}/rounds/${roundId}/retry`).then(r => r.data),
+};
+
+/**
  * Location de voiture — marketplace multi-partenaires (phase 1 : lecture seule).
  * Pas d'auth requise pour search/detail. La réservation viendra en phase 2.
  */

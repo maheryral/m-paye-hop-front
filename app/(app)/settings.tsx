@@ -19,8 +19,7 @@ import { useTheme } from '../../src/contexts/ThemeContext';
 import GradientHeader from '../../src/components/GradientHeader';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { userPreferencesService, accountService, resolveAssetUrl } from '../../src/services/api';
-import { useBiometric } from '../../src/hooks/useBiometric';
-import { useBiometricGuard } from '../../src/contexts/BiometricGuardContext';
+// Biométrie : gérée désormais dans /security uniquement (un seul point de vérité).
 import { useLocale, Currency } from '../../src/contexts/LocaleContext';
 import type { Language } from '../../src/i18n/translations';
 
@@ -70,8 +69,6 @@ export default function Settings() {
   const router = useRouter();
   const { colors, isDark, setMode } = useTheme();
   const { user } = useAuth();
-  const { support: biometricSupport, authenticate: biometricAuth, label: biometricLabel } = useBiometric();
-  const { refreshPref: refreshBiometricGuard } = useBiometricGuard();
   const { language, currency, setLanguage, setCurrency, t } = useLocale();
 
   const [prefs, setPrefs] = useState<Preferences>(DEFAULT_PREFS);
@@ -119,41 +116,9 @@ export default function Settings() {
     savePref({ [key]: !prefs[key] } as Partial<Preferences>);
   };
 
-  const togglePrivacy = async (key: 'showBalance' | 'twoFactor' | 'biometric') => {
-    if (key === 'biometric') {
-      const enabling = !prefs.biometric;
-      if (enabling) {
-        // Vérifier le support matériel
-        if (!biometricSupport.hasHardware) {
-          Alert.alert(
-            'Non supporté',
-            'Cet appareil ne prend pas en charge l\'authentification biométrique.',
-          );
-          return;
-        }
-        if (!biometricSupport.isEnrolled) {
-          Alert.alert(
-            'Aucune empreinte enregistrée',
-            `Veuillez d'abord configurer ${biometricLabel} dans les réglages de votre appareil.`,
-          );
-          return;
-        }
-        // Demander une vraie auth biométrique pour activer
-        const ok = await biometricAuth(`Activer ${biometricLabel} pour M'Paye`);
-        if (!ok) {
-          return; // user a annulé / échec, on n'active pas
-        }
-      }
-      // Désactivation : aussi sécurisée (l'utilisateur doit prouver son identité)
-      if (!enabling) {
-        const ok = await biometricAuth(`Désactiver ${biometricLabel}`);
-        if (!ok) return;
-      }
-      await savePref({ biometric: enabling });
-      // Recharger la garde biométrique pour qu'elle prenne en compte le changement
-      refreshBiometricGuard();
-      return;
-    }
+  // Note : le toggle biométrique a été déplacé vers la page Sécurité.
+  // Settings ne gère plus que les prefs simples (boolean toggle direct).
+  const togglePrivacy = async (key: 'showBalance' | 'twoFactor') => {
     savePref({ [key]: !prefs[key] } as Partial<Preferences>);
   };
 
@@ -290,7 +255,8 @@ export default function Settings() {
       items: [
         { id: 'showBalance', label: 'Afficher le solde', description: 'Montrer le solde sur l\'écran d\'accueil', type: 'toggle', value: prefs.showBalance, action: () => togglePrivacy('showBalance') },
         { id: 'twoFactor', label: 'Double authentification', description: 'Sécuriser votre compte', type: 'toggle', value: prefs.twoFactor, action: () => togglePrivacy('twoFactor') },
-        { id: 'biometric', label: `Authentification ${biometricLabel}`, description: biometricSupport.hasHardware ? (biometricSupport.isEnrolled ? `Utiliser ${biometricLabel} pour l'app et les transactions` : `Aucun ${biometricLabel.toLowerCase()} enregistré sur l'appareil`) : 'Non supporté sur cet appareil', type: 'toggle', value: prefs.biometric, action: () => togglePrivacy('biometric') },
+        // Toggle biométrique déplacé vers la page Sécurité — seul endroit qui gère
+        // hardware-check + prompt + sauvegarde + refresh du BiometricGuard.
       ],
     },
     {

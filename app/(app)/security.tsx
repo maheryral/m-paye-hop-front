@@ -16,7 +16,9 @@ import { useRouter } from 'expo-router';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import GradientHeader from '../../src/components/GradientHeader';
 import { useAuth } from '../../src/contexts/AuthContext';
-import { authService, accountService } from '../../src/services/api';
+import { authService, accountService, userPreferencesService } from '../../src/services/api';
+import { useBiometric } from '../../src/hooks/useBiometric';
+import { useBiometricGuard } from '../../src/contexts/BiometricGuardContext';
 
 interface SecurityItem {
   id: string;
@@ -48,6 +50,19 @@ export default function Security() {
   const router = useRouter();
   const { colors } = useTheme();
   const { user, logoutAllDevices, updateUser } = useAuth();
+
+  // === Biométrie ===
+  // Le toggle "Authentification biométrique" plus bas est branché sur :
+  //   - useBiometric : accès au hardware Face ID/empreinte de l'appareil
+  //   - userPreferencesService : pref serveur (persistante, sync multi-devices)
+  //   - useBiometricGuard : refresh du contexte global après activation/désactivation
+  //     pour que l'app verrouille (ou déverrouille) immédiatement.
+  const {
+    support: biometricSupport,
+    authenticate: biometricAuth,
+    label: biometricLabel,
+  } = useBiometric();
+  const { refreshPref: refreshBiometricGuard } = useBiometricGuard();
   const [showPassword, setShowPassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -115,7 +130,42 @@ export default function Security() {
   useEffect(() => {
     loadSessions();
     loadSecurityScore();
+    loadSecurityPrefs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /**
+   * Charge la pref biométrique (et future 2FA) depuis le backend et synchronise
+   * l'état local. Sans ça, le toggle affichait `status: true` en dur — mensonger.
+   */
+  const loadSecurityPrefs = async () => {
+    try {
+      const prefs = await userPreferencesService.get();
+      setSecurityItems((prev) =>
+        prev.map((it) => {
+          if (it.id === 'biometric') {
+            const enabled = !!prefs?.biometric;
+            return {
+              ...it,
+              status: enabled,
+              action: enabled ? 'Désactiver' : 'Activer',
+            };
+          }
+          if (it.id === '2fa') {
+            const enabled = !!prefs?.twoFactor;
+            return {
+              ...it,
+              status: enabled,
+              action: enabled ? 'Désactiver' : 'Activer',
+            };
+          }
+          return it;
+        }),
+      );
+    } catch {
+      // Garde les defaults si KO réseau
+    }
+  };
 
   // Le score local est ce que le backend renvoie ; defaut 0 le temps du chargement.
   const securityScore = scoreData?.score ?? 0;
@@ -264,21 +314,83 @@ export default function Security() {
     setTimeout(() => setMessage(null), 4000);
   };
 
-  const toggleSecurityItem = (id: string) => {
-    setSecurityItems(prev =>
-      prev.map(item =>
-        item.id === id ? { ...item, status: !item.status, action: !item.status ? 'Désactiver' : 'Activer' } : item
-      )
-    );
-    const item = securityItems.find(i => i.id === id);
-    Alert.alert(
-      item?.status ? 'Désactivation' : 'Activation',
-      `Voulez-vous vraiment ${item?.status ? 'désactiver' : 'activer'} ${item?.name?.toLowerCase()} ?`,
-      [
-        { text: 'Annuler', style: 'cancel' },
-        { text: 'Confirmer', onPress: () => {} },
-      ]
-    );
+  /**
+   * Toggle réellement fonctionnel pour la biométrie (et placeholder pour 2FA).
+   *
+   * Biométrie — flow identique à ce qu'avait `togglePrivacy` dans /settings :
+   *   1. Vérif hardware (Face ID/empreinte présents sur l'appareil)
+   *   2. Vérif enrôlement (l'user a configuré au moins une empreinte/visage)
+   *   3. Prompt biométrique pour CONFIRMER l'action (anti-toggle accidentel)
+   *   4. Save backend → userPreferencesService.update({ biometric })
+   *   5. Refresh BiometricGuard → l'app se verrouille/déverrouille immédiatement
+   *
+   * Optimistic UI : on bascule visuellement après succès uniquement.
+   */
+  const toggleSecurityItem = async (id: string) => {
+    const item = securityItems.find((i) => i.id === id);
+    if (!item) return;
+
+    if (id === 'biometric') {
+      const enabling = !item.status;
+
+      if (enabling) {
+        if (!biometricSupport.hasHardware) {
+          Alert.alert(
+            'Non supporté',
+            "Cet appareil ne prend pas en charge l'authentification biométrique.",
+          );
+          return;
+        }
+        if (!biometricSupport.isEnrolled) {
+          Alert.alert(
+            'Aucune empreinte enregistrée',
+            `Configurez d'abord ${biometricLabel} dans les réglages de votre appareil.`,
+          );
+          return;
+        }
+        const ok = await biometricAuth(`Activer ${biometricLabel} pour M'Paye`);
+        if (!ok) return;
+      } else {
+        // Désactivation : on demande aussi une auth pour éviter qu'un curieux
+        // qui a ton tel déverrouillé puisse couper la sécurité.
+        const ok = await biometricAuth(`Désactiver ${biometricLabel}`);
+        if (!ok) return;
+      }
+
+      try {
+        await userPreferencesService.update({ biometric: enabling });
+        setSecurityItems((prev) =>
+          prev.map((it) =>
+            it.id === id
+              ? { ...it, status: enabling, action: enabling ? 'Désactiver' : 'Activer' }
+              : it,
+          ),
+        );
+        // Le contexte global se met à jour → app verrouillée/déverrouillée immédiatement.
+        await refreshBiometricGuard();
+        setMessage({
+          type: 'success',
+          text: enabling
+            ? `${biometricLabel} activé. L'app sera verrouillée au prochain lancement.`
+            : `${biometricLabel} désactivé.`,
+        });
+        setTimeout(() => setMessage(null), 3000);
+      } catch {
+        Alert.alert('Erreur', 'Impossible de sauvegarder la préférence.');
+      }
+      return;
+    }
+
+    // 2FA : non câblé encore (nécessite un flow TOTP/SMS complet). On garde
+    // l'Alert pour signaler à l'user que c'est en attente d'implémentation.
+    if (id === '2fa') {
+      Alert.alert(
+        'Bientôt disponible',
+        "L'activation 2FA SMS sera disponible prochainement. " +
+          "En attendant, créez un mot de passe fort dans la section ci-dessus.",
+      );
+      return;
+    }
   };
 
   const revokeSession = (deviceId: string) => {
