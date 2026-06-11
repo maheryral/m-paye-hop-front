@@ -16,7 +16,7 @@ import { useRouter } from 'expo-router';
 import { useTheme } from '../../../src/contexts/ThemeContext';
 import { telepheriqueApi, TLPLigne } from '../../../src/services/telepheriqueApi';
 
-const BLUE_GRADIENT: [string, string] = ['#0f172a', '#1e40af'];
+const BLUE_GRADIENT: [string, string] = ['#2563eb', '#1e40af'];
 
 export default function TelepheriqueHome() {
   const router = useRouter();

@@ -24,7 +24,7 @@ import {
   Conversation,
 } from '../../../src/services/messagingApi';
 
-const BLUE_GRADIENT: [string, string] = ['#0f172a', '#1e40af'];
+const BLUE_GRADIENT: [string, string] = ['#2563eb', '#1e40af'];
 
 export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();

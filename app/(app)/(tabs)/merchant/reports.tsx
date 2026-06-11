@@ -155,7 +155,7 @@ export default function MerchantReports() {
           <>
             {/* KPI CA TTC */}
             <LinearGradient
-              colors={['#0f172a', '#1e40af']}
+              colors={['#2563eb', '#1e40af']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.kpiCard}

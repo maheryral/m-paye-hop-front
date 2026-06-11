@@ -23,7 +23,7 @@ import {
   TLPTarif,
 } from '../../../../src/services/telepheriqueApi';
 
-const BLUE_GRADIENT: [string, string] = ['#0f172a', '#1e40af'];
+const BLUE_GRADIENT: [string, string] = ['#2563eb', '#1e40af'];
 const BLUE_GRADIENT_LIGHT: [string, string] = ['#1e3a8a', '#3b82f6'];
 
 export default function LigneDetail() {

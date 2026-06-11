@@ -20,12 +20,14 @@ import {
   useStripe,
   useConfirmSetupIntent,
 } from '@stripe/stripe-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/contexts/ThemeContext';
+import BottomTabBar from '../../src/components/BottomTabBar';
 import { useWallet } from '../../src/contexts/WalletContext';
 import { useSocket } from '../../src/contexts/SocketContext';
 import { useBiometricGuard } from '../../src/contexts/BiometricGuardContext';
 import { useLocale } from '../../src/contexts/LocaleContext';
-import GradientHeader from '../../src/components/GradientHeader';
 import {
   paymentApi,
   PaymentRequestMethod,
@@ -91,6 +93,8 @@ export default function Portfolio() {
   const [details, setDetails] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [showBalance, setShowBalance] = useState(true);
+  const insets = useSafeAreaInsets();
 
   // === Stripe carte ===
   const [savedCards, setSavedCards] = useState<SavedCard[]>([]);
@@ -430,58 +434,89 @@ export default function Portfolio() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <GradientHeader
-        title="Mon Portefeuille"
-        subtitle="Dépôt et retrait"
-        rightIcon="time-outline"
-        onRightPress={() => router.push('/history' as any)}
-      />
+      {/* ═══════════ HEADER BLEU ═══════════ */}
+      <LinearGradient
+        colors={['#2563eb', '#1e40af', '#1e3a8a']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0.7 }}
+        style={[styles.header, { paddingTop: insets.top + 10 }]}
+      >
+        <View style={styles.headerDecor} />
+        <View style={styles.headerRow}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.headerBackBtn} hitSlop={8}>
+            <Ionicons name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
+          <View style={{ flex: 1, marginLeft: 6 }}>
+            <Text style={styles.headerTitle}>Mon Portefeuille</Text>
+            <Text style={styles.headerSubtitle}>Dépôt et retrait</Text>
+          </View>
+          <TouchableOpacity
+            onPress={() =>
+              Alert.alert('Aide', 'Choisissez Dépôt ou Retrait, puis une méthode de paiement pour continuer.')
+            }
+            style={styles.headerHelpBtn}
+            hitSlop={8}
+          >
+            <Ionicons name="help" size={20} color="#fff" />
+          </TouchableOpacity>
+        </View>
+
+        {/* ─── Carte solde (panneau dans le bloc bleu, comme le dashboard) ─── */}
+        <View style={styles.balanceCard}>
+          <View style={styles.balanceDecor} />
+          {/* Illustration portefeuille */}
+          <View style={styles.walletIllustration}>
+            <Ionicons name="wallet" size={56} color="rgba(255,255,255,0.9)" />
+            <View style={styles.walletCheck}>
+              <Ionicons name="checkmark" size={15} color="#fff" />
+            </View>
+          </View>
+
+          <View style={styles.balanceLabelRow}>
+            <Text style={styles.balanceLabel}>Solde disponible</Text>
+            <TouchableOpacity onPress={() => setShowBalance((v) => !v)} hitSlop={10}>
+              <Ionicons name={showBalance ? 'eye-outline' : 'eye-off-outline'} size={18} color="rgba(255,255,255,0.9)" />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.balanceAmount}>{showBalance ? formatCurrency(balance) : '••••••••'}</Text>
+
+          <TouchableOpacity style={styles.detailsBtn} onPress={() => router.push('/history' as any)} activeOpacity={0.85}>
+            <Text style={styles.detailsBtnText}>Voir les détails</Text>
+            <Ionicons name="chevron-forward" size={16} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
 
       <ScrollView
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 96 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#1e40af" />
         }
       >
-        <View style={{ padding: 16 }}>
-          {/* Solde */}
-          <View style={[styles.balanceCard, { backgroundColor: '#1e40af' }]}>
-            <Text style={styles.balanceLabel}>Solde disponible</Text>
-            <Text style={styles.balanceAmount}>{formatCurrency(balance)}</Text>
-          </View>
-
-          {/* Tabs Dépôt/Retrait */}
+        <View style={styles.body}>
+          {/* ─── Tabs Dépôt/Retrait ─── */}
           <View style={[styles.tabs, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <TouchableOpacity
-              style={[styles.tab, tab === 'deposit' && { backgroundColor: '#1e40af' }]}
+              style={[styles.tab, tab === 'deposit' && styles.tabActiveDeposit]}
               onPress={() => setTab('deposit')}
+              activeOpacity={0.8}
             >
-              <Ionicons
-                name="arrow-down-outline"
-                size={18}
-                color={tab === 'deposit' ? '#fff' : colors.textSecondary}
-              />
-              <Text style={[styles.tabText, { color: tab === 'deposit' ? '#fff' : colors.textSecondary }]}>
-                Dépôt
-              </Text>
+              <Ionicons name="arrow-down" size={18} color={tab === 'deposit' ? '#fff' : colors.textSecondary} />
+              <Text style={[styles.tabText, { color: tab === 'deposit' ? '#fff' : colors.textSecondary }]}>Dépôt</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.tab, tab === 'withdraw' && { backgroundColor: '#ef4444' }]}
+              style={[styles.tab, tab === 'withdraw' && styles.tabActiveWithdraw]}
               onPress={() => setTab('withdraw')}
+              activeOpacity={0.8}
             >
-              <Ionicons
-                name="arrow-up-outline"
-                size={18}
-                color={tab === 'withdraw' ? '#fff' : colors.textSecondary}
-              />
-              <Text style={[styles.tabText, { color: tab === 'withdraw' ? '#fff' : colors.textSecondary }]}>
-                Retrait
-              </Text>
+              <Ionicons name="arrow-up" size={18} color={tab === 'withdraw' ? '#fff' : colors.text} />
+              <Text style={[styles.tabText, { color: tab === 'withdraw' ? '#fff' : colors.text }]}>Retrait</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Choix méthode — grille qui wrap automatiquement quand l'écran est plein */}
+          {/* ─── Choix méthode ─── */}
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Choisissez une méthode</Text>
           <View style={styles.methodsGrid}>
             {METHODS.map((m) => {
@@ -491,40 +526,64 @@ export default function Portfolio() {
                   key={m.id}
                   style={[
                     styles.methodCard,
-                    {
-                      backgroundColor: colors.card,
-                      borderColor: colors.border,
-                      opacity: disabled ? 0.4 : 1,
-                    },
+                    { backgroundColor: colors.card, borderColor: colors.border, opacity: disabled ? 0.4 : 1 },
                   ]}
                   disabled={disabled}
                   onPress={() => openMethodModal(m.id)}
+                  activeOpacity={0.8}
                 >
-                  <View style={[styles.methodIcon, { backgroundColor: m.color }]}>
-                    <Ionicons name={m.icon} size={22} color="#fff" />
-                  </View>
-                  <Text
-                    style={[styles.methodName, { color: colors.text }]}
-                    numberOfLines={1}
+                  <View
+                    style={[
+                      styles.methodIcon,
+                      { backgroundColor: m.color, shadowColor: m.color },
+                    ]}
                   >
+                    <Ionicons name={m.icon} size={24} color="#fff" />
+                  </View>
+                  <Text style={[styles.methodName, { color: colors.text }]} numberOfLines={1}>
                     {m.name}
                   </Text>
-                  <Text
-                    style={[styles.methodDesc, { color: colors.textSecondary }]}
-                    numberOfLines={2}
-                  >
+                  <Text style={[styles.methodDesc, { color: colors.textSecondary }]} numberOfLines={2}>
                     {m.description}
                   </Text>
+                  <View style={[styles.methodChevron, { backgroundColor: colors.borderLight }]}>
+                    <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+                  </View>
                 </TouchableOpacity>
               );
             })}
           </View>
 
-          <Text style={[styles.hint, { color: colors.textSecondary }]}>
-            Cliquez sur une méthode pour ouvrir le formulaire de {tab === 'deposit' ? 'dépôt' : 'retrait'}.
-          </Text>
+          {/* ─── Info ─── */}
+          <View style={[styles.infoCard, { backgroundColor: colors.borderLight }]}>
+            <View style={[styles.infoIconCircle, { backgroundColor: `${colors.primary}1a` }]}>
+              <Ionicons name="information" size={16} color={colors.primary} />
+            </View>
+            <Text style={[styles.infoCardText, { color: colors.textSecondary }]}>
+              Cliquez sur une méthode pour ouvrir le formulaire de {tab === 'deposit' ? 'dépôt' : 'retrait'}.
+            </Text>
+          </View>
+
+          {/* ─── Atouts ─── */}
+          <View style={[styles.featuresCard, { backgroundColor: colors.borderLight }]}>
+            {[
+              { icon: 'shield-checkmark' as const, title: 'Sécurisé', desc: 'Vos transactions sont protégées' },
+              { icon: 'flash' as const, title: 'Rapide', desc: 'Dépôt en quelques secondes' },
+              { icon: 'headset' as const, title: 'Assistance', desc: "Besoin d'aide ? Contactez-nous" },
+            ].map((f) => (
+              <View key={f.title} style={styles.featureItem}>
+                <View style={[styles.featureIcon, { backgroundColor: `${colors.primary}1a` }]}>
+                  <Ionicons name={f.icon} size={16} color={colors.primary} />
+                </View>
+                <Text style={[styles.featureTitle, { color: colors.text }]}>{f.title}</Text>
+                <Text style={[styles.featureDesc, { color: colors.textSecondary }]}>{f.desc}</Text>
+              </View>
+            ))}
+          </View>
         </View>
       </ScrollView>
+
+      <BottomTabBar />
 
       {/* ============================================================== */}
       {/* MODAL PLEIN ÉCRAN — formulaire de dépôt/retrait par méthode    */}
@@ -1030,51 +1089,198 @@ function getInstructions(method: PaymentRequestMethod, tab: Tab, ref: string): s
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  balanceCard: {
-    padding: 20,
-    borderRadius: 18,
-    marginBottom: 16,
+  // ─── Header bleu ───
+  header: {
+    paddingHorizontal: 16,
+    paddingBottom: 22,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+    overflow: 'hidden',
   },
-  balanceLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '600' },
-  balanceAmount: { color: '#fff', fontSize: 28, fontWeight: '800', marginTop: 8 },
+  headerDecor: {
+    position: 'absolute',
+    top: -40,
+    right: -30,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  headerRow: { flexDirection: 'row', alignItems: 'center', paddingTop: 4 },
+  headerBackBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'flex-start' },
+  headerTitle: { color: '#fff', fontSize: 22, fontWeight: '700' },
+  headerSubtitle: { color: 'rgba(255,255,255,0.8)', fontSize: 13, marginTop: 1 },
+  headerHelpBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 
+  // ─── Corps ───
+  body: { paddingHorizontal: 16, paddingTop: 20 },
+
+  // ─── Carte solde (panneau translucide dans le bloc bleu) ───
+  balanceCard: {
+    padding: 18,
+    borderRadius: 20,
+    marginTop: 14,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  balanceDecor: {
+    position: 'absolute',
+    top: -50,
+    left: -30,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  walletIllustration: {
+    position: 'absolute',
+    top: 24,
+    right: 20,
+    width: 80,
+    height: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  walletCheck: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#22c55e',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  balanceLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  balanceLabel: { color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: '500' },
+  balanceAmount: { color: '#fff', fontSize: 32, fontWeight: '800', marginTop: 6, letterSpacing: 0.3 },
+  detailsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 14,
+    marginTop: 16,
+  },
+  detailsBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+
+  // ─── Tabs ───
   tabs: {
     flexDirection: 'row',
-    padding: 4,
-    borderRadius: 14,
+    padding: 5,
+    borderRadius: 16,
     borderWidth: 1,
-    marginBottom: 16,
+    marginBottom: 20,
   },
   tab: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingVertical: 12, borderRadius: 10,
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 13,
+    borderRadius: 12,
   },
-  tabText: { fontWeight: '700', fontSize: 14 },
+  tabActiveDeposit: {
+    backgroundColor: '#2563eb',
+    shadowColor: '#2563eb',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  tabActiveWithdraw: {
+    backgroundColor: '#ef4444',
+    shadowColor: '#ef4444',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  tabText: { fontWeight: '700', fontSize: 15 },
 
-  sectionTitle: { fontSize: 14, fontWeight: '700', marginBottom: 10, marginTop: 4 },
+  sectionTitle: { fontSize: 17, fontWeight: '700', marginBottom: 12 },
   sectionTitle2: { fontSize: 14, fontWeight: '700' },
   hint: { fontSize: 11, textAlign: 'center', marginTop: 8 },
 
-  /** Conteneur grille : 2 cartes par ligne en mode portrait, wrap auto si plus. */
   methodsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: 12,
   },
-  /** Carte méthode en mode vertical (icône en haut, texte en dessous).
-   *  Largeur = (100% - gap 10) / 2 = ~48% pour avoir 2 colonnes proprement. */
   methodCard: {
-    width: '48%',
+    width: '47.8%',
+    padding: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    minHeight: 160,
+  },
+  methodIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
+    marginBottom: 12,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  methodName: { fontWeight: '700', fontSize: 15, marginBottom: 4 },
+  methodDesc: { fontSize: 12, lineHeight: 16 },
+  methodChevron: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // ─── Info ───
+  infoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     padding: 14,
     borderRadius: 14,
-    borderWidth: 1,
-    minHeight: 130,
+    marginTop: 18,
   },
-  methodIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  methodName: { fontWeight: '700', fontSize: 13, textAlign: 'center' },
-  methodDesc: { fontSize: 11, textAlign: 'center', lineHeight: 14 },
+  infoIconCircle: { width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
+  infoCardText: { flex: 1, fontSize: 13, lineHeight: 18 },
+
+  // ─── Atouts ───
+  featuresCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 16,
+    marginTop: 12,
+    gap: 8,
+  },
+  featureItem: { flex: 1, alignItems: 'flex-start' },
+  featureIcon: { width: 32, height: 32, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+  featureTitle: { fontSize: 12, fontWeight: '700' },
+  featureDesc: { fontSize: 10, lineHeight: 13, marginTop: 2 },
 
   // === Modal plein écran ===
   modalHeaderRow: {

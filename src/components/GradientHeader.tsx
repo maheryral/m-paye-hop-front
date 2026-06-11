@@ -7,8 +7,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 
-export const BLUE_GRADIENT: [string, string] = ['#0f172a', '#1e40af'];
-export const BLUE_GRADIENT_LIGHT: [string, string] = ['#1e3a8a', '#3b82f6'];
+// Dégradé bleu vif — identique à l'en-tête du dashboard, pour une UI cohérente.
+export const BLUE_GRADIENT: readonly [string, string, string] = ['#2563eb', '#1e40af', '#1e3a8a'];
+export const BLUE_GRADIENT_LIGHT: [string, string] = ['#3b82f6', '#1e40af'];
 
 interface GradientHeaderProps {
   title: string;
@@ -36,7 +37,7 @@ export default function GradientHeader({
     <LinearGradient
       colors={BLUE_GRADIENT}
       start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
+      end={{ x: 0.9, y: 1 }}
       style={styles.wrapper}
     >
       <SafeAreaView edges={['top']}>

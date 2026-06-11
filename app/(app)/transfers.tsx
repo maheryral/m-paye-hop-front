@@ -13,9 +13,11 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../src/contexts/ThemeContext';
-import GradientHeader from '../../src/components/GradientHeader';
+import BottomTabBar from '../../src/components/BottomTabBar';
 import { useBiometricGuard } from '../../src/contexts/BiometricGuardContext';
 import { monetizationApi, FeeCalculation } from '../../src/services/monetizationApi';
 import { useLocale } from '../../src/contexts/LocaleContext';
@@ -30,7 +32,10 @@ export default function Transfers() {
   const { formatCurrency } = useLocale();
   const { balance, fetchBalance } = useWallet();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(false);
+  const [showBalance, setShowBalance] = useState(true);
+  const [infoOpen, setInfoOpen] = useState(true);
   const [step, setStep] = useState(1);
   const [searching, setSearching] = useState(false);
   const [validatedRecipient, setValidatedRecipient] = useState<any>(null);
@@ -188,25 +193,36 @@ export default function Transfers() {
     setStep(1);
   };
 
+  const quickAmounts = [5000, 10000, 25000, 50000];
+
   const renderStep1 = () => (
     <View style={styles.formContainer}>
       {/* Champ destinataire */}
       <View style={styles.inputGroup}>
-        <Text style={[styles.label, { color: colors.textSecondary }]}>
-          Email ou numéro de téléphone
-        </Text>
-        <View style={[styles.inputContainer, { borderColor: colors.border, backgroundColor: colors.card }]}>
-          <Ionicons name="person-outline" size={20} color={colors.textSecondary} />
+        <Text style={[styles.label, { color: colors.text }]}>Envoyer à</Text>
+        <View style={[styles.fieldCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
+          <View style={[styles.fieldIcon, { backgroundColor: `${colors.primary}14` }]}>
+            <Ionicons name="person-outline" size={20} color={colors.primary} />
+          </View>
           <TextInput
             style={[styles.input, { color: colors.text }]}
-            placeholder="exemple@email.com ou 032 12 345 67"
-            placeholderTextColor={colors.textSecondary}
+            placeholder="Email ou numéro de téléphone"
+            placeholderTextColor={colors.textTertiary}
             value={formData.toPhone}
             onChangeText={handleToPhoneChange}
             autoCapitalize="none"
             autoCorrect={false}
           />
-          {searching && <ActivityIndicator size="small" color={colors.primary} />}
+          {searching ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <TouchableOpacity
+              style={[styles.fieldTrailingBtn, { backgroundColor: colors.primary }]}
+              onPress={() => router.push('/beneficiaries' as any)}
+            >
+              <Ionicons name="people" size={18} color="#fff" />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* 🔎 Dropdown suggestions */}
@@ -267,22 +283,50 @@ export default function Transfers() {
 
       {/* Champ montant */}
       <View style={styles.inputGroup}>
-        <Text style={[styles.label, { color: colors.textSecondary }]}>
-          Montant (Ar)
-        </Text>
-        <View style={[styles.inputContainer, { borderColor: colors.border, backgroundColor: colors.card }]}>
-          <Ionicons name="cash-outline" size={20} color={colors.textSecondary} />
+        <Text style={[styles.label, { color: colors.text }]}>Montant (Ar)</Text>
+        <View style={[styles.fieldCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
+          <View style={[styles.fieldIcon, { backgroundColor: `${colors.primary}14` }]}>
+            <Ionicons name="cash-outline" size={20} color={colors.primary} />
+          </View>
           <TextInput
-            style={[styles.input, { color: colors.text, fontSize: 18, fontWeight: '600' }]}
+            style={[styles.input, { color: colors.text, fontSize: 22, fontWeight: '700' }]}
             placeholder="0"
-            placeholderTextColor={colors.textSecondary}
+            placeholderTextColor={colors.textTertiary}
             value={formData.amount}
             onChangeText={handleAmountChange}
             keyboardType="numeric"
           />
+          <Text style={[styles.amountSuffix, { color: colors.primary }]}>Ar</Text>
         </View>
+
+        {/* Chips montants rapides */}
+        <View style={styles.chipsRow}>
+          {quickAmounts.map((amt) => {
+            const active = formData.amount === String(amt);
+            return (
+              <TouchableOpacity
+                key={amt}
+                style={[
+                  styles.chip,
+                  { backgroundColor: active ? colors.primary : `${colors.primary}10`, borderColor: active ? colors.primary : 'transparent' },
+                ]}
+                onPress={() => handleAmountChange(String(amt))}
+              >
+                <Text style={[styles.chipText, { color: active ? '#fff' : colors.primary }]}>{amt.toLocaleString()}</Text>
+              </TouchableOpacity>
+            );
+          })}
+          <TouchableOpacity
+            style={[styles.chip, { backgroundColor: `${colors.primary}10` }]}
+            onPress={() => handleAmountChange('')}
+          >
+            <Text style={[styles.chipText, { color: colors.primary }]}>Autre</Text>
+          </TouchableOpacity>
+        </View>
+
         <Text style={[styles.helperText, { color: colors.textSecondary }]}>
-          Min: {minAmount.toLocaleString()} Ar | Max: {maxAmount.toLocaleString()} Ar
+          Min: <Text style={{ color: colors.primary, fontWeight: '700' }}>{minAmount.toLocaleString()} Ar</Text>
+          {'  |  '}Max: <Text style={{ color: colors.primary, fontWeight: '700' }}>{maxAmount.toLocaleString()} Ar</Text>
         </Text>
         {formData.amount && !isAmountValid && (
           <Text style={styles.errorText}>
@@ -328,16 +372,19 @@ export default function Transfers() {
 
       {/* Champ motif */}
       <View style={styles.inputGroup}>
-        <Text style={[styles.label, { color: colors.textSecondary }]}>Motif (optionnel)</Text>
-        <View style={[styles.inputContainer, { borderColor: colors.border, backgroundColor: colors.card }]}>
-          <Ionicons name="document-text-outline" size={20} color={colors.textSecondary} />
+        <Text style={[styles.label, { color: colors.text }]}>Motif (optionnel)</Text>
+        <View style={[styles.fieldCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
+          <View style={[styles.fieldIcon, { backgroundColor: `${colors.secondary}14` }]}>
+            <Ionicons name="document-text-outline" size={20} color={colors.secondary} />
+          </View>
           <TextInput
             style={[styles.input, { color: colors.text }]}
             placeholder="Ex: Remboursement, Cadeau, Salaire..."
-            placeholderTextColor={colors.textSecondary}
+            placeholderTextColor={colors.textTertiary}
             value={formData.motif}
             onChangeText={(text) => setFormData(prev => ({ ...prev, motif: text }))}
           />
+          <Ionicons name="chevron-down" size={20} color={colors.primary} />
         </View>
       </View>
 
@@ -443,54 +490,90 @@ export default function Transfers() {
       style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <GradientHeader
-        title="Transfert Wallet"
-        subtitle="Envoyez de l'argent à un autre utilisateur MyWallet"
-      />
+      {/* ═══════════ HEADER BLEU ═══════════ */}
+      <LinearGradient
+        colors={['#2563eb', '#1e40af', '#1e3a8a']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0.7 }}
+        style={[styles.gradHeader, { paddingTop: insets.top + 10 }]}
+      >
+        <View style={styles.gradHeaderDecor} />
+        <View style={styles.gradHeaderRow}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.gradBackBtn} hitSlop={8}>
+            <Ionicons name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.gradTitle}>Transfert Wallet</Text>
+          <TouchableOpacity
+            onPress={() =>
+              Alert.alert('Aide', "Saisissez un email ou numéro M'Paye, un montant, puis validez. Transfert instantané et sans frais.")
+            }
+            style={styles.gradHelpBtn}
+            hitSlop={8}
+          >
+            <Ionicons name="help" size={20} color="#fff" />
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.gradSubtitle}>Envoyez de l'argent à un autre utilisateur MyWallet</Text>
+
+        {/* Carte solde (panneau dans le bloc bleu, comme le dashboard) */}
+        <View style={styles.balanceCard}>
+          <View style={styles.balanceDecor} />
+          <View style={styles.walletIllustration}>
+            <Ionicons name="wallet" size={52} color="rgba(255,255,255,0.9)" />
+            <View style={styles.walletCheck}>
+              <Ionicons name="checkmark" size={14} color="#fff" />
+            </View>
+          </View>
+
+          <View style={styles.balanceLabelRow}>
+            <Text style={styles.balanceLabel}>Solde disponible</Text>
+            <TouchableOpacity onPress={() => setShowBalance((v) => !v)} hitSlop={10}>
+              <Ionicons name={showBalance ? 'eye-outline' : 'eye-off-outline'} size={18} color="rgba(255,255,255,0.9)" />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.balanceAmount}>{showBalance ? formatCurrency(balance) : '••••••••'}</Text>
+          <Text style={styles.balanceAccount}>Compte : {user?.prenom || 'Compte principal'}</Text>
+        </View>
+      </LinearGradient>
+
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-
-        {/* Balance card */}
-        <View style={[styles.balanceCard, { backgroundColor: colors.primary }]}>
-          <Text style={styles.balanceLabel}>Solde disponible</Text>
-          <Text style={styles.balanceAmount}>{formatCurrency(balance)}</Text>
-          <Text style={styles.balanceAccount}>
-            Compte: {user?.prenom || 'Compte principal'}
-          </Text>
-        </View>
-
         {/* Steps */}
         {step === 1 && renderStep1()}
         {step === 2 && renderStep2()}
         {step === 3 && renderStep3()}
 
-        {/* Informations */}
+        {/* Informations (accordéon) */}
         {step === 1 && (
-          <View style={[styles.infoCard, { backgroundColor: `${colors.info}10`, borderColor: colors.info }]}>
-            <Ionicons name="information-circle" size={20} color={colors.info} />
-            <View style={styles.infoContent}>
+          <View style={[styles.infoCard, { backgroundColor: `${colors.info}0d`, borderColor: `${colors.info}33` }]}>
+            <TouchableOpacity style={styles.infoHeaderRow} onPress={() => setInfoOpen((v) => !v)} activeOpacity={0.7}>
+              <Ionicons name="information-circle" size={22} color={colors.info} />
               <Text style={[styles.infoTitle, { color: colors.info }]}>Informations sur le transfert</Text>
-              <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-                • Transfert instantané entre comptes MyWallet
-              </Text>
-              <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-                • Sans frais
-              </Text>
-              <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-                • Transfert sécurisé par authentification JWT
-              </Text>
-              <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-                • Montant minimum: {minAmount.toLocaleString()} Ar
-              </Text>
-              <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-                • Montant maximum: {maxAmount.toLocaleString()} Ar
-              </Text>
-            </View>
+              <Ionicons name={infoOpen ? 'chevron-up' : 'chevron-down'} size={20} color={colors.info} />
+            </TouchableOpacity>
+            {infoOpen && (
+              <View style={styles.infoRows}>
+                {[
+                  { icon: 'flash' as const, bg: '#3b82f615', color: '#3b82f6', text: 'Transfert instantané entre comptes MyWallet' },
+                  { icon: 'shield-checkmark' as const, bg: '#22c55e15', color: '#22c55e', text: 'Sans frais' },
+                  { icon: 'lock-closed' as const, bg: '#8b5cf615', color: '#8b5cf6', text: 'Transfert sécurisé et authentifié par JWT' },
+                ].map((r) => (
+                  <View key={r.text} style={styles.infoRow}>
+                    <View style={[styles.infoRowIcon, { backgroundColor: r.bg }]}>
+                      <Ionicons name={r.icon} size={16} color={r.color} />
+                    </View>
+                    <Text style={[styles.infoRowText, { color: colors.text }]}>{r.text}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
           </View>
         )}
       </ScrollView>
+
+      <BottomTabBar />
     </KeyboardAvoidingView>
   );
 }
@@ -500,74 +583,127 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 96,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+
+  // ─── Header bleu ───
+  gradHeader: {
+    paddingHorizontal: 16,
+    paddingBottom: 22,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+    overflow: 'hidden',
   },
-  backButton: {
+  gradHeaderDecor: {
+    position: 'absolute',
+    top: -30,
+    right: -40,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  gradHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4 },
+  gradBackBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'flex-start' },
+  gradTitle: { flex: 1, color: '#fff', fontSize: 20, fontWeight: '700', textAlign: 'center' },
+  gradHelpBtn: {
     width: 40,
     height: 40,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.5)',
     justifyContent: 'center',
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  subtitle: {
-    fontSize: 14,
-    marginBottom: 24,
-  },
+  gradSubtitle: { color: 'rgba(255,255,255,0.8)', fontSize: 13, textAlign: 'center', marginTop: 4, paddingHorizontal: 20 },
+
+  // ─── Carte solde (panneau translucide dans le bloc bleu) ───
   balanceCard: {
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 24,
+    borderRadius: 20,
+    padding: 18,
+    marginTop: 14,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
   },
-  balanceLabel: {
-    color: '#fff',
-    fontSize: 12,
-    opacity: 0.8,
-    marginBottom: 8,
+  balanceDecor: {
+    position: 'absolute',
+    bottom: -50,
+    left: -20,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: 'rgba(255,255,255,0.07)',
   },
-  balanceAmount: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: 8,
+  walletIllustration: {
+    position: 'absolute',
+    top: 22,
+    right: 20,
+    width: 76,
+    height: 76,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  balanceAccount: {
-    color: '#fff',
-    fontSize: 12,
-    opacity: 0.8,
+  walletCheck: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#22c55e',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.25)',
   },
+  balanceLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  balanceLabel: { color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: '500' },
+  balanceAmount: { color: '#fff', fontSize: 32, fontWeight: '800', marginTop: 6, letterSpacing: 0.3 },
+  balanceAccount: { color: 'rgba(255,255,255,0.8)', fontSize: 13, marginTop: 6 },
+
   formContainer: {
-    gap: 20,
+    gap: 22,
   },
   inputGroup: {
-    gap: 8,
+    gap: 10,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 16,
+    fontWeight: '700',
   },
-  inputContainer: {
+
+  // ─── Champ en carte ───
+  fieldCard: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 12,
-    height: 50,
-    gap: 10,
+    paddingVertical: 10,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 1,
   },
+  fieldIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  fieldTrailingBtn: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  amountSuffix: { fontSize: 18, fontWeight: '800' },
   input: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 15,
   },
+
+  // ─── Chips montant ───
+  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  chip: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 20, borderWidth: 1 },
+  chipText: { fontSize: 13, fontWeight: '700' },
+
   helperText: {
     fontSize: 12,
   },
@@ -775,24 +911,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   infoCard: {
-    flexDirection: 'row',
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
     marginTop: 24,
-    gap: 12,
   },
-  infoContent: {
-    flex: 1,
-    gap: 4,
-  },
+  infoHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   infoTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 4,
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
   },
-  infoText: {
-    fontSize: 12,
-    lineHeight: 18,
-  },
+  infoRows: { marginTop: 14, gap: 14 },
+  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  infoRowIcon: { width: 34, height: 34, borderRadius: 11, justifyContent: 'center', alignItems: 'center' },
+  infoRowText: { flex: 1, fontSize: 13, lineHeight: 18 },
 });

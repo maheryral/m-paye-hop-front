@@ -14,9 +14,10 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import GradientHeader from '../../src/components/GradientHeader';
+import BottomTabBar from '../../src/components/BottomTabBar';
 import {
   billersApi,
   type PublicBiller,
@@ -56,6 +57,9 @@ function lucideToIonicons(name: string | null): keyof typeof Ionicons.glyphMap {
 export default function Bills() {
   const router = useRouter();
   const { colors } = useTheme();
+  // typeId optionnel : si fourni (tap sur une catégorie du dashboard), on
+  // ne montre que les billers de ce type de service.
+  const { typeId } = useLocalSearchParams<{ typeId?: string }>();
 
   const [billers, setBillers] = useState<PublicBiller[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,10 +95,12 @@ export default function Bills() {
       if (existing) existing.items.push(b);
       else groups.set(key, { type: b.serviceType, items: [b] });
     }
-    return Array.from(groups.values()).sort(
+    const all = Array.from(groups.values()).sort(
       (a, b) => a.type.sortOrder - b.type.sortOrder,
     );
-  }, [billers]);
+    // Filtre sur la catégorie sélectionnée depuis le dashboard, si présente.
+    return typeId ? all.filter((g) => g.type.id === typeId) : all;
+  }, [billers, typeId]);
 
   /**
    * Click sur un biller — deux comportements selon `integrationType` :
@@ -150,7 +156,7 @@ export default function Bills() {
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 96 }}
       >
         {loading ? (
           <View style={styles.centered}>
@@ -277,6 +283,8 @@ export default function Bills() {
           })
         )}
       </ScrollView>
+
+      <BottomTabBar />
     </View>
   );
 }

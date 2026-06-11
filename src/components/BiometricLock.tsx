@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useBiometric } from '../hooks/useBiometric';
 
-const BLUE_GRADIENT: [string, string] = ['#0f172a', '#1e40af'];
+const BLUE_GRADIENT: [string, string] = ['#2563eb', '#1e40af'];
 
 interface Props {
   onUnlock: () => void;

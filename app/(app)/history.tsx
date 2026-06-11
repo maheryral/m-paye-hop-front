@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import GradientHeader from '../../src/components/GradientHeader';
+import BottomTabBar from '../../src/components/BottomTabBar';
 import { transactionService } from '../../src/services/api';
 
 interface Transaction {
@@ -433,6 +434,8 @@ export default function History() {
           </View>
         </View>
       </Modal>
+
+      <BottomTabBar />
     </View>
   );
 }
@@ -565,7 +568,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingBottom: 96,
   },
   transactionCard: {
     flexDirection: 'row',

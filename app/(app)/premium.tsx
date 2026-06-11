@@ -140,7 +140,7 @@ export default function Premium() {
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
         {/* Statut actuel */}
         <LinearGradient
-          colors={['#0f172a', '#1e40af']}
+          colors={['#2563eb', '#1e40af']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.currentCard}

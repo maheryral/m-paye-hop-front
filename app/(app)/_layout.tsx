@@ -1,9 +1,22 @@
 // app/(app)/_layout.tsx
 import { Drawer } from 'expo-router/drawer';
 import { Ionicons } from '@expo/vector-icons';
-import { TouchableOpacity, Text, StyleSheet, Alert, View, ScrollView, ActivityIndicator, Image } from 'react-native';
+import {
+  TouchableOpacity,
+  Text,
+  StyleSheet,
+  Alert,
+  View,
+  ScrollView,
+  ActivityIndicator,
+  Image,
+  Switch,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/contexts/AuthContext';
+import { useTheme } from '../../src/contexts/ThemeContext';
 import { resolveAssetUrl } from '../../src/services/api';
 import { secureStorage } from '../../src/services/secureStorage';
 import { useState, useEffect } from 'react';
@@ -11,6 +24,8 @@ import { useState, useEffect } from 'react';
 function CustomDrawerContent({ navigation }: any) {
   const router = useRouter();
   const { logout, user } = useAuth();
+  const { colors, isDark, toggleTheme } = useTheme();
+  const insets = useSafeAreaInsets();
   const [merchantProfile, setMerchantProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showMerchantMenu, setShowMerchantMenu] = useState(false);
@@ -21,10 +36,9 @@ function CustomDrawerContent({ navigation }: any) {
   }, [user]);
 
   const checkMerchantStatus = async () => {
-    try { 
+    try {
       const { merchantApi } = await import('../../src/services/merchantApi');
       const response = await merchantApi.getStatus();
-      // response.data = { hasMerchant: boolean, merchant: {validationStatus, ...} | null }
       if (response.data?.hasMerchant && response.data?.merchant) {
         setMerchantProfile(response.data.merchant);
       } else {
@@ -67,10 +81,7 @@ function CustomDrawerContent({ navigation }: any) {
           ? `Documents complémentaires requis : ${merchantProfile.rejectionReason}`
           : 'Veuillez resoumettre votre demande.',
       };
-      Alert.alert(
-        'Espace commerçant indisponible',
-        messages[status] || 'Statut inconnu',
-      );
+      Alert.alert('Espace commerçant indisponible', messages[status] || 'Statut inconnu');
       return;
     }
 
@@ -82,8 +93,6 @@ function CustomDrawerContent({ navigation }: any) {
 
     setIsSwitching(true);
     try {
-      // 🔑 Demande au backend un JWT contenant activeMerchantId — nécessaire pour
-      // les routes marchand (génération QR, etc.) qui lisent req.user.activeMerchantId.
       const { merchantApi } = await import('../../src/services/merchantApi');
       const res = await merchantApi.switch(merchantId);
       await Promise.all([
@@ -99,24 +108,20 @@ function CustomDrawerContent({ navigation }: any) {
         error?.response?.data?.message || 'Impossible de basculer en mode marchand.',
       );
     } finally {
-      setTimeout(() => {
-        setIsSwitching(false);
-      }, 300);
+      setTimeout(() => setIsSwitching(false), 300);
     }
   };
 
   const switchToClient = async () => {
     setIsSwitching(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 600));
+      await new Promise((resolve) => setTimeout(resolve, 600));
       setShowMerchantMenu(false);
       navigation.navigate('dashboard');
     } catch (error) {
       console.error('Erreur lors du basculement:', error);
     } finally {
-      setTimeout(() => {
-        setIsSwitching(false);
-      }, 300);
+      setTimeout(() => setIsSwitching(false), 300);
     }
   };
 
@@ -125,46 +130,47 @@ function CustomDrawerContent({ navigation }: any) {
   };
 
   const userMenuItems = [
-    { name: 'Accueil', route: 'dashboard', icon: 'home-outline', color: '#1e40af' },
-    { name: 'Portefeuille', route: 'portfolio', icon: 'wallet-outline', color: '#3b82f6' },
-    { name: 'QR Code', route: 'qr-payment', icon: 'qr-code-outline', color: '#1e40af' },
-    { name: 'Recevoir un paiement', route: 'seller-mode', icon: 'cash-outline', color: '#10b981' },
-    { name: 'Transferts', route: 'transfers', icon: 'send-outline', color: '#1e40af' },
-    { name: 'Messages', route: 'messages', icon: 'chatbubbles-outline', color: '#3b82f6' },
-    { name: 'Historique', route: 'history', icon: 'time-outline', color: '#64748b' },
-    { name: 'Fidélité', route: 'loyalty', icon: 'gift-outline', color: '#8b5cf6' },
-    { name: 'Services', route: 'bills', icon: 'apps-outline', color: '#8b5cf6' },
-    { name: 'Bénéficiaires', route: 'beneficiaries', icon: 'people-outline', color: '#1e40af' },
-    { name: 'Premium', route: 'premium', icon: 'star-outline', color: '#3b82f6' },
+    { name: 'Accueil', route: 'dashboard', icon: 'home-outline', color: '#2563eb', desc: 'Tableau de bord' },
+    { name: 'Portefeuille', route: 'portfolio', icon: 'wallet-outline', color: '#3b82f6', desc: 'Gérez vos moyens' },
+    { name: 'QR Code', route: 'qr-payment', icon: 'qr-code-outline', color: '#8b5cf6', desc: 'Scanner et payer' },
+    { name: 'Recevoir un paiement', route: 'seller-mode', icon: 'cash-outline', color: '#10b981', desc: 'Demander un paiement' },
+    { name: 'Transferts', route: 'transfers', icon: 'send-outline', color: '#0ea5e9', desc: "Envoyer de l'argent" },
+    { name: 'Messages', route: 'messages', icon: 'chatbubbles-outline', color: '#8b5cf6', desc: 'Notifications & alertes' },
+    { name: 'Historique', route: 'history', icon: 'time-outline', color: '#64748b', desc: 'Vos transactions' },
+    { name: 'Fidélité', route: 'loyalty', icon: 'gift-outline', color: '#f59e0b', desc: 'Points et récompenses' },
+    { name: 'Services', route: 'bills', icon: 'apps-outline', color: '#6366f1', desc: 'Factures et services' },
+    { name: 'Bénéficiaires', route: 'beneficiaries', icon: 'people-outline', color: '#2563eb', desc: 'Vos contacts' },
   ];
 
   const settingsMenuItems = [
-    { name: 'Paramètres', route: 'settings', icon: 'settings-outline', color: '#64748b' },
-    { name: 'Sécurité', route: 'security', icon: 'shield-outline', color: '#64748b' },
+    { name: 'Paramètres', route: 'settings', icon: 'settings-outline', color: '#64748b', desc: 'Préférences' },
+    { name: 'Sécurité', route: 'security', icon: 'shield-outline', color: '#0ea5e9', desc: 'Mot de passe & PIN' },
   ];
 
   const isAdmin = (user as any)?.role === 'ADMIN';
-  const adminMenuItems = isAdmin ? [
-    { name: 'Validation paiements', route: 'admin-payments', icon: 'shield-checkmark-outline', color: '#1e40af' },
-    { name: 'Revenus plateforme', route: 'admin-revenue', icon: 'trending-up-outline', color: '#10b981' },
-  ] : [];
+  const adminMenuItems = isAdmin
+    ? [
+        { name: 'Validation paiements', route: 'admin-payments', icon: 'shield-checkmark-outline', color: '#2563eb', desc: 'À examiner' },
+        { name: 'Revenus plateforme', route: 'admin-revenue', icon: 'trending-up-outline', color: '#10b981', desc: 'Chiffre & commissions' },
+      ]
+    : [];
 
   const merchantMenuItems = [
-    { name: 'Dashboard', route: 'merchant/dashboard', icon: 'stats-chart-outline', color: '#1e40af', section: 'Gestion des ventes' },
+    { name: 'Dashboard', route: 'merchant/dashboard', icon: 'stats-chart-outline', color: '#2563eb', section: 'Gestion des ventes' },
     { name: 'Scanner QR', route: 'merchant/scanner', icon: 'scan-outline', color: '#3b82f6', section: 'Gestion des ventes' },
-    { name: 'QR Code', route: 'merchant/qrcode', icon: 'qr-code-outline', color: '#1e40af', section: 'Gestion des ventes' },
+    { name: 'QR Code', route: 'merchant/qrcode', icon: 'qr-code-outline', color: '#8b5cf6', section: 'Gestion des ventes' },
     { name: 'Liens de paiement', route: 'merchant/payment-links', icon: 'link-outline', color: '#3b82f6', section: 'Gestion des ventes' },
-    { name: 'Transactions', route: 'merchant/transactions', icon: 'list-outline', color: '#1e40af', section: 'Gestion des ventes' },
-    { name: 'Mes boutiques', route: 'merchant/store', icon: 'storefront-outline', color: '#1e40af', section: 'Gestion du commerce' },
+    { name: 'Transactions', route: 'merchant/transactions', icon: 'list-outline', color: '#2563eb', section: 'Gestion des ventes' },
+    { name: 'Mes boutiques', route: 'merchant/store', icon: 'storefront-outline', color: '#2563eb', section: 'Gestion du commerce' },
     { name: 'Catalogue produits', route: 'merchant/products', icon: 'cube-outline', color: '#3b82f6', section: 'Gestion du commerce' },
     { name: 'Équipe', route: 'merchant/employees', icon: 'people-outline', color: '#10b981', section: 'Gestion du commerce' },
-    { name: 'Coupons', route: 'merchant/coupons', icon: 'pricetag-outline', color: '#1e40af', section: 'Gestion du commerce' },
+    { name: 'Coupons', route: 'merchant/coupons', icon: 'pricetag-outline', color: '#2563eb', section: 'Gestion du commerce' },
     { name: 'Fidélité', route: 'merchant/loyalty', icon: 'gift-outline', color: '#8b5cf6', section: 'Gestion du commerce' },
     { name: 'Remboursements', route: 'merchant/refunds', icon: 'refresh-outline', color: '#ef4444', section: 'Gestion du commerce' },
     { name: 'Mon solde', route: 'merchant/balance', icon: 'cash-outline', color: '#3b82f6', section: 'Finances' },
-    { name: 'Retrait', route: 'merchant/withdraw', icon: 'arrow-down-outline', color: '#1e40af', section: 'Finances' },
-    { name: 'Statistiques', route: 'merchant/analytics', icon: 'trending-up-outline', color: '#1e40af', section: 'Finances' },
-    { name: 'Rapports', route: 'merchant/reports', icon: 'document-text-outline', color: '#1e40af', section: 'Finances' },
+    { name: 'Retrait', route: 'merchant/withdraw', icon: 'arrow-down-outline', color: '#2563eb', section: 'Finances' },
+    { name: 'Statistiques', route: 'merchant/analytics', icon: 'trending-up-outline', color: '#2563eb', section: 'Finances' },
+    { name: 'Rapports', route: 'merchant/reports', icon: 'document-text-outline', color: '#2563eb', section: 'Finances' },
     { name: 'Mon entreprise', route: 'merchant/profile', icon: 'business-outline', color: '#64748b', section: 'Configuration' },
     { name: 'Paramètres', route: 'merchant/settings', icon: 'settings-outline', color: '#64748b', section: 'Configuration' },
     { name: 'Aide', route: 'merchant/help', icon: 'help-circle-outline', color: '#64748b', section: 'Configuration' },
@@ -176,316 +182,290 @@ function CustomDrawerContent({ navigation }: any) {
     return acc;
   }, {});
 
-  if (loading) {
-    return (
-      <View style={styles.drawerContainer}>
-        <View style={styles.drawerHeader}>
-          <View style={styles.logoContainer}>
-            <View style={styles.logoIcon}>
-              <Ionicons name="wallet-outline" size={28} color="#1e40af" />
-            </View>
-            <Text style={styles.logoText}>M'Paye</Text>
-          </View>
-        </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#1e40af" />
-        </View>
+  // ─── En-tête commun (logo + bouton fermer) ───
+  const renderHeader = () => (
+    <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+      <View style={styles.logoContainer}>
+        <LinearGradient colors={['#2563eb', '#1e40af']} style={styles.logoIcon}>
+          <Ionicons name="wallet" size={22} color="#fff" />
+        </LinearGradient>
+        <Text style={[styles.logoText, { color: colors.text }]}>M'Paye</Text>
       </View>
-    );
-  }
+      <TouchableOpacity
+        style={[styles.closeBtn, { backgroundColor: colors.borderLight }]}
+        onPress={() => navigation.closeDrawer()}
+        hitSlop={8}
+      >
+        <Ionicons name="close" size={22} color={colors.text} />
+      </TouchableOpacity>
+    </View>
+  );
 
-  if (isSwitching) {
+  // ─── Carte d'un item de menu ───
+  const renderMenuCard = (item: any, onPress: () => void) => (
+    <TouchableOpacity
+      key={item.route}
+      style={[styles.menuCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <View style={[styles.menuIcon, { backgroundColor: item.color }]}>
+        <Ionicons name={item.icon as any} size={20} color="#fff" />
+      </View>
+      <View style={styles.menuTextWrap}>
+        <Text style={[styles.menuTitle, { color: colors.text }]}>{item.name}</Text>
+        {item.desc && <Text style={[styles.menuDesc, { color: colors.textSecondary }]}>{item.desc}</Text>}
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+    </TouchableOpacity>
+  );
+
+  if (loading || isSwitching) {
     return (
-      <View style={styles.drawerContainer}>
-        <View style={styles.drawerHeader}>
-          <View style={styles.logoContainer}>
-            <View style={styles.logoIcon}>
-              <Ionicons name="wallet-outline" size={28} color="#1e40af" />
-            </View>
-            <Text style={styles.logoText}>M'Paye</Text>
-          </View>
-        </View>
-        <View style={styles.switchingContainer}>
-          <ActivityIndicator size="large" color="#1e40af" />
-          <Text style={styles.switchingText}>Basculement en cours...</Text>
-          <Text style={styles.switchingSubText}>Veuillez patienter</Text>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        {renderHeader()}
+        <View style={styles.centerBox}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          {isSwitching && (
+            <>
+              <Text style={[styles.switchingText, { color: colors.text }]}>Basculement en cours...</Text>
+              <Text style={[styles.switchingSub, { color: colors.textSecondary }]}>Veuillez patienter</Text>
+            </>
+          )}
         </View>
       </View>
     );
   }
 
   return (
-    <View style={styles.drawerContainer}>
-      <View style={styles.drawerHeader}>
-        <View style={styles.logoContainer}>
-          <View style={styles.logoIcon}>
-            <Ionicons name="wallet-outline" size={28} color="#1e40af" />
-          </View>
-          <Text style={styles.logoText}>M'Paye</Text>
-        </View>
-      </View>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {renderHeader()}
 
-      <TouchableOpacity onPress={goToProfile} style={styles.userInfo} activeOpacity={0.7}>
-        <View style={styles.avatar}>
-          {user?.avatarUrl ? (
-            <Image
-              source={{ uri: resolveAssetUrl(user.avatarUrl) }}
-              style={styles.avatarImage}
-            />
-          ) : (
-            <Text style={styles.avatarText}>
-              {user?.prenom?.[0] || user?.email?.[0] || 'U'}
-              {user?.nom?.[0] || ''}
-            </Text>
-          )}
-          <View style={styles.onlineBadge} />
-        </View>
-        <View style={styles.userInfoText}>
-          <Text style={styles.userName}>
-            {user?.prenom ? `${user.prenom} ${user.nom || ''}` : user?.email?.split('@')[0] || 'Utilisateur'}
-          </Text>
-          <Text style={styles.userEmail} numberOfLines={1}>{user?.email}</Text>
-          <View style={styles.kycBadge}>
-            <Ionicons name="shield-checkmark" size={10} color="#3b82f6" />
-            <Text style={styles.kycText}>KYC {user?.kycLevel || 'BASIC'}</Text>
-          </View>
-        </View>
-        <Ionicons name="chevron-forward" size={16} color="#64748b" />
-      </TouchableOpacity>
-
-      <View style={styles.separator} />
-
-      {showMerchantMenu ? (
-        <>
-          <View style={[styles.merchantBanner, { backgroundColor: '#1e40af15' }]}>
-            <View style={[styles.merchantBannerIcon, { backgroundColor: '#1e40af20' }]}>
-              <Ionicons name="storefront" size={24} color="#1e40af" />
-            </View>
-            <View style={styles.merchantBannerText}>
-              <Text style={styles.merchantBannerTitle}>Espace Commerçant</Text>
-              <Text style={styles.merchantBannerSubtitle}>
-                {merchantProfile?.businessName || 'Mon entreprise'}
+      <ScrollView
+        style={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16 }}
+      >
+        {/* ─── Carte profil ─── */}
+        <TouchableOpacity
+          onPress={goToProfile}
+          style={[styles.profileCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+          activeOpacity={0.7}
+        >
+          <View style={styles.avatar}>
+            {user?.avatarUrl ? (
+              <Image source={{ uri: resolveAssetUrl(user.avatarUrl) }} style={styles.avatarImage} />
+            ) : (
+              <Text style={styles.avatarText}>
+                {user?.prenom?.[0] || user?.email?.[0] || 'U'}
+                {user?.nom?.[0] || ''}
               </Text>
-            </View>
-            <TouchableOpacity onPress={switchToClient} style={styles.switchButton}>
-              <Ionicons name="person-outline" size={18} color="#fff" />
-              <Text style={styles.switchButtonText}>Client</Text>
-            </TouchableOpacity>
+            )}
+            <View style={[styles.onlineBadge, { borderColor: colors.card }]} />
           </View>
+          <View style={styles.profileText}>
+            <Text style={[styles.profileName, { color: colors.text }]} numberOfLines={1}>
+              {user?.prenom ? `${user.prenom} ${user.nom || ''}` : user?.email?.split('@')[0] || 'Utilisateur'}
+            </Text>
+            <Text style={[styles.profileEmail, { color: colors.textSecondary }]} numberOfLines={1}>
+              {user?.email}
+            </Text>
+            <View style={styles.kycBadge}>
+              <Ionicons name="shield-checkmark" size={11} color="#3b82f6" />
+              <Text style={styles.kycText}>KYC {user?.kycLevel || 'BASIC'}</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+        </TouchableOpacity>
 
-          <ScrollView 
-            style={styles.scrollContainer}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
-          >
+        {showMerchantMenu ? (
+          <>
+            {/* Bannière espace commerçant actif */}
+            <LinearGradient colors={['#2563eb', '#7c3aed']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.ctaBanner}>
+              <View style={styles.ctaIcon}>
+                <Ionicons name="storefront" size={22} color="#fff" />
+              </View>
+              <View style={styles.ctaTextWrap}>
+                <Text style={styles.ctaTitle}>Espace Commerçant</Text>
+                <Text style={styles.ctaSubtitle} numberOfLines={1}>
+                  {merchantProfile?.businessName || 'Mon entreprise'}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={switchToClient} style={styles.switchBtn}>
+                <Ionicons name="person-outline" size={16} color="#fff" />
+                <Text style={styles.switchBtnText}>Client</Text>
+              </TouchableOpacity>
+            </LinearGradient>
+
             {Object.entries(groupedMerchantMenu).map(([section, items]: [string, any]) => (
               <View key={section}>
-                <Text style={styles.sectionTitle}>{section}</Text>
-                {items.map((item: any) => (
-                  <TouchableOpacity
-                    key={item.route}
-                    style={styles.menuItem}
-                    onPress={() => navigateToMerchantRoute(item.route)}
-                  >
-                    <View style={[styles.menuIconContainer, { backgroundColor: `${item.color}20` }]}>
-                      <Ionicons name={item.icon as any} size={22} color={item.color} />
-                    </View>
-                    <Text style={styles.menuItemText}>{item.name}</Text>
-                  </TouchableOpacity>
-                ))}
+                <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>{section}</Text>
+                {items.map((item: any) => renderMenuCard(item, () => navigateToMerchantRoute(item.route)))}
               </View>
             ))}
-          </ScrollView>
-        </>
-      ) : (
-        <ScrollView
-          style={styles.scrollContainer}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-        >
-          {(() => {
-            const status = merchantProfile?.validationStatus;
+          </>
+        ) : (
+          <>
+            {/* ─── CTA Commerçant (selon statut) ─── */}
+            {(() => {
+              const status = merchantProfile?.validationStatus;
 
-            // Pas de merchant du tout → CTA inscription
-            if (!merchantProfile) {
+              // Pas de merchant → Devenir commerçant (bannière dégradée)
+              if (!merchantProfile) {
+                return (
+                  <TouchableOpacity activeOpacity={0.85} onPress={handleMerchantSignup}>
+                    <LinearGradient colors={['#2563eb', '#7c3aed']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.ctaBanner}>
+                      <View style={styles.ctaIcon}>
+                        <Ionicons name="storefront" size={22} color="#fff" />
+                      </View>
+                      <View style={styles.ctaTextWrap}>
+                        <Text style={styles.ctaTitle}>Devenir Commerçant</Text>
+                        <Text style={styles.ctaSubtitle}>Développez votre activité</Text>
+                      </View>
+                      <View style={styles.proBadge}>
+                        <Text style={styles.proBadgeText}>PRO</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color="#fff" style={{ marginLeft: 6 }} />
+                    </LinearGradient>
+                  </TouchableOpacity>
+                );
+              }
+
+              // États intermédiaires → carte de statut
+              const statusMap: Record<string, { icon: any; color: string; title: string; sub: string; onPress: () => void }> = {
+                PENDING: { icon: 'time-outline', color: '#f59e0b', title: 'Demande en attente', sub: 'Validation sous 48h', onPress: switchToMerchant },
+                REJECTED: {
+                  icon: 'close-circle-outline',
+                  color: '#ef4444',
+                  title: 'Demande rejetée',
+                  sub: merchantProfile.rejectionReason ?? 'Voir les détails',
+                  onPress: switchToMerchant,
+                },
+                RESUBMIT_REQUIRED: {
+                  icon: 'document-text-outline',
+                  color: '#f59e0b',
+                  title: 'Documents à compléter',
+                  sub: 'Resoumission requise',
+                  onPress: handleMerchantSignup,
+                },
+              };
+
+              if (status && statusMap[status]) {
+                const s = statusMap[status];
+                return (
+                  <TouchableOpacity
+                    style={[styles.menuCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    onPress={s.onPress}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.menuIcon, { backgroundColor: s.color }]}>
+                      <Ionicons name={s.icon} size={20} color="#fff" />
+                    </View>
+                    <View style={styles.menuTextWrap}>
+                      <Text style={[styles.menuTitle, { color: s.color }]}>{s.title}</Text>
+                      <Text style={[styles.menuDesc, { color: colors.textSecondary }]} numberOfLines={1}>
+                        {s.sub}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                );
+              }
+
+              // APPROVED → bannière espace commerçant
               return (
-                <TouchableOpacity
-                  style={[styles.menuItem, styles.merchantMenuItem]}
-                  onPress={handleMerchantSignup}
-                >
-                  <View style={[styles.menuIconContainer, styles.merchantIcon]}>
-                    <Ionicons name="storefront-outline" size={22} color="#1e40af" />
-                  </View>
-                  <Text style={[styles.menuItemText, styles.merchantText]}>
-                    Devenir Commerçant
-                  </Text>
-                  <View style={styles.merchantBadge}>
-                    <Text style={styles.merchantBadgeText}>PRO</Text>
-                  </View>
+                <TouchableOpacity activeOpacity={0.85} onPress={switchToMerchant}>
+                  <LinearGradient colors={['#2563eb', '#7c3aed']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.ctaBanner}>
+                    <View style={styles.ctaIcon}>
+                      <Ionicons name="storefront" size={22} color="#fff" />
+                    </View>
+                    <View style={styles.ctaTextWrap}>
+                      <Text style={styles.ctaTitle}>Espace Commerçant</Text>
+                      <Text style={styles.ctaSubtitle} numberOfLines={1}>
+                        {merchantProfile.businessName || 'Accéder à mon espace'}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color="#fff" />
+                  </LinearGradient>
                 </TouchableOpacity>
               );
-            }
+            })()}
 
-            // En attente
-            if (status === 'PENDING') {
-              return (
-                <TouchableOpacity
-                  style={[styles.menuItem, styles.merchantMenuItem]}
-                  onPress={switchToMerchant}
-                >
-                  <View style={[styles.menuIconContainer, { backgroundColor: '#f59e0b20' }]}>
-                    <Ionicons name="time-outline" size={22} color="#f59e0b" />
-                  </View>
-                  <View style={styles.merchantInfo}>
-                    <Text style={[styles.menuItemText, { color: '#f59e0b' }]}>
-                      Demande en attente
-                    </Text>
-                    <Text style={styles.merchantStoreName} numberOfLines={1}>
-                      Validation sous 48h
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            }
+            {/* ─── Services ─── */}
+            <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>Services</Text>
+            {userMenuItems.map((item) => renderMenuCard(item, () => navigation.navigate(item.route)))}
 
-            // Rejetée
-            if (status === 'REJECTED') {
-              return (
-                <TouchableOpacity
-                  style={[styles.menuItem, styles.merchantMenuItem]}
-                  onPress={switchToMerchant}
-                >
-                  <View style={[styles.menuIconContainer, { backgroundColor: '#ef444420' }]}>
-                    <Ionicons name="close-circle-outline" size={22} color="#ef4444" />
-                  </View>
-                  <View style={styles.merchantInfo}>
-                    <Text style={[styles.menuItemText, { color: '#ef4444' }]}>
-                      Demande rejetée
-                    </Text>
-                    <Text style={styles.merchantStoreName} numberOfLines={1}>
-                      {merchantProfile.rejectionReason ?? 'Voir les détails'}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            }
+            {/* ─── Compte ─── */}
+            <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>Compte</Text>
+            {settingsMenuItems.map((item) => renderMenuCard(item, () => navigation.navigate(item.route)))}
 
-            // Resoumission requise
-            if (status === 'RESUBMIT_REQUIRED') {
-              return (
-                <TouchableOpacity
-                  style={[styles.menuItem, styles.merchantMenuItem]}
-                  onPress={handleMerchantSignup}
-                >
-                  <View style={[styles.menuIconContainer, { backgroundColor: '#f59e0b20' }]}>
-                    <Ionicons name="document-text-outline" size={22} color="#f59e0b" />
-                  </View>
-                  <View style={styles.merchantInfo}>
-                    <Text style={[styles.menuItemText, { color: '#f59e0b' }]}>
-                      Documents à compléter
-                    </Text>
-                    <Text style={styles.merchantStoreName} numberOfLines={1}>
-                      Resoumission requise
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            }
+            {/* ─── Administration ─── */}
+            {adminMenuItems.length > 0 && (
+              <>
+                <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>Administration</Text>
+                {adminMenuItems.map((item) => renderMenuCard(item, () => navigation.navigate(item.route)))}
+              </>
+            )}
 
-            // APPROVED → accès complet
-            return (
-              <TouchableOpacity
-                style={[styles.menuItem, styles.merchantMenuItem]}
-                onPress={switchToMerchant}
-              >
-                <View style={[styles.menuIconContainer, styles.merchantIcon]}>
-                  <Ionicons name="storefront-outline" size={22} color="#1e40af" />
-                </View>
-                <View style={styles.merchantInfo}>
-                  <Text style={[styles.menuItemText, styles.merchantText]}>
-                    Espace Commerçant
-                  </Text>
-                  {merchantProfile.businessName && (
-                    <Text style={styles.merchantStoreName} numberOfLines={1}>
-                      {merchantProfile.businessName}
-                    </Text>
-                  )}
-                </View>
-                <View style={styles.activeMerchantBadge}>
-                  <Ionicons name="chevron-forward" size={16} color="#1e40af" />
-                </View>
-              </TouchableOpacity>
-            );
-          })()}
-
-          <Text style={styles.sectionTitle}>Services</Text>
-          {userMenuItems.map((item) => (
+            {/* ─── Carte Premium ─── */}
             <TouchableOpacity
-              key={item.route}
-              style={styles.menuItem}
-              onPress={() => navigation.navigate(item.route)}
+              style={[styles.proCard, { backgroundColor: `${colors.secondary}14`, borderColor: `${colors.secondary}30` }]}
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate('premium')}
             >
-              <View style={[styles.menuIconContainer, { backgroundColor: `${item.color}20` }]}>
-                <Ionicons name={item.icon as any} size={22} color={item.color} />
+              <View style={styles.proCardIcon}>
+                <Ionicons name="ribbon" size={20} color="#f59e0b" />
               </View>
-              <Text style={styles.menuItemText}>{item.name}</Text>
+              <View style={styles.menuTextWrap}>
+                <Text style={[styles.menuTitle, { color: colors.text }]}>Plus avec M'Paye Pro</Text>
+                <Text style={[styles.menuDesc, { color: colors.textSecondary }]}>Des outils avancés pour aller plus loin.</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
             </TouchableOpacity>
-          ))}
 
-          <Text style={styles.sectionTitle}>Paramètres</Text>
-          {settingsMenuItems.map((item) => (
+            {/* ─── Déconnexion ─── */}
             <TouchableOpacity
-              key={item.route}
-              style={styles.menuItem}
-              onPress={() => navigation.navigate(item.route)}
+              style={[styles.logoutBtn, { borderColor: '#ef444455', backgroundColor: '#ef44440d' }]}
+              onPress={handleLogout}
+              activeOpacity={0.7}
             >
-              <View style={[styles.menuIconContainer, { backgroundColor: `${item.color}20` }]}>
-                <Ionicons name={item.icon as any} size={22} color={item.color} />
-              </View>
-              <Text style={styles.menuItemText}>{item.name}</Text>
+              <Ionicons name="log-out-outline" size={20} color="#ef4444" />
+              <Text style={styles.logoutText}>Déconnexion</Text>
             </TouchableOpacity>
-          ))}
+          </>
+        )}
+      </ScrollView>
 
-          {adminMenuItems.length > 0 && (
-            <>
-              <Text style={styles.sectionTitle}>Administration</Text>
-              {adminMenuItems.map((item) => (
-                <TouchableOpacity
-                  key={item.route}
-                  style={styles.menuItem}
-                  onPress={() => navigation.navigate(item.route)}
-                >
-                  <View style={[styles.menuIconContainer, { backgroundColor: `${item.color}20` }]}>
-                    <Ionicons name={item.icon as any} size={22} color={item.color} />
-                  </View>
-                  <Text style={styles.menuItemText}>{item.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </>
-          )}
-        </ScrollView>
-      )}
-
-      <View style={styles.footer}>
-        <View style={styles.separator} />
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <View style={styles.logoutIconContainer}>
-            <Ionicons name="log-out-outline" size={22} color="#ef4444" />
-          </View>
-          <Text style={styles.logoutText}>Déconnexion</Text>
+      {/* ─── Footer : mode sombre + paramètres ─── */}
+      <View style={[styles.footer, { borderTopColor: colors.border, paddingBottom: insets.bottom > 0 ? insets.bottom : 14 }]}>
+        <View style={styles.footerItem}>
+          <Ionicons name={isDark ? 'moon' : 'moon-outline'} size={18} color={colors.textSecondary} />
+          <Text style={[styles.footerText, { color: colors.textSecondary }]}>Mode sombre</Text>
+          <Switch
+            value={isDark}
+            onValueChange={toggleTheme}
+            trackColor={{ false: colors.border, true: colors.primary }}
+            thumbColor="#fff"
+            style={styles.footerSwitch}
+          />
+        </View>
+        <TouchableOpacity style={styles.footerItem} onPress={() => navigation.navigate('settings')}>
+          <Ionicons name="settings-outline" size={18} color={colors.textSecondary} />
+          <Text style={[styles.footerText, { color: colors.textSecondary }]}>Paramètres</Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 }
 
-export default function AppLayout() {
+function AppDrawer() {
+  const { colors } = useTheme();
   return (
     <Drawer
       drawerContent={(props) => <CustomDrawerContent {...props} />}
       screenOptions={{
         headerShown: false,
-        drawerStyle: { backgroundColor: '#1e293b', width: '100%' },
+        drawerStyle: { backgroundColor: colors.background, width: '100%' },
         drawerType: 'front',
         overlayColor: 'rgba(0,0,0,0.5)',
       }}
@@ -493,10 +473,7 @@ export default function AppLayout() {
       <Drawer.Screen name="dashboard" options={{ title: "M'Paye" }} />
       <Drawer.Screen name="portfolio" options={{ title: 'Portefeuille' }} />
       <Drawer.Screen name="qr-payment" options={{ title: 'QR Code' }} />
-      <Drawer.Screen
-        name="pay-link"
-        options={{ title: 'Paiement', drawerItemStyle: { display: 'none' } }}
-      />
+      <Drawer.Screen name="pay-link" options={{ title: 'Paiement', drawerItemStyle: { display: 'none' } }} />
       <Drawer.Screen name="transfers" options={{ title: 'Transferts' }} />
       <Drawer.Screen name="history" options={{ title: 'Historique' }} />
       <Drawer.Screen name="bills" options={{ title: 'Services' }} />
@@ -504,32 +481,18 @@ export default function AppLayout() {
         name="vehicle-rentals"
         options={{
           title: 'Location voiture',
-          drawerIcon: ({ color, size }) => (
-            <Ionicons name="car-sport-outline" size={size} color={color} />
-          ),
+          drawerIcon: ({ color, size }) => <Ionicons name="car-sport-outline" size={size} color={color} />,
         }}
       />
       <Drawer.Screen
         name="tontines"
         options={{
           title: 'Tontines',
-          drawerIcon: ({ color, size }) => (
-            <Ionicons name="people-outline" size={size} color={color} />
-          ),
+          drawerIcon: ({ color, size }) => <Ionicons name="people-outline" size={size} color={color} />,
         }}
       />
-      <Drawer.Screen
-        name="transport-scolaire"
-        options={{ title: 'Transport scolaire', drawerItemStyle: { display: 'none' } }}
-      />
-      {/* Écran WebView ouvert depuis Bills — caché du drawer */}
-      <Drawer.Screen
-        name="biller-webview"
-        options={{
-          title: 'Service',
-          drawerItemStyle: { display: 'none' },
-        }}
-      />
+      <Drawer.Screen name="transport-scolaire" options={{ title: 'Transport scolaire', drawerItemStyle: { display: 'none' } }} />
+      <Drawer.Screen name="biller-webview" options={{ title: 'Service', drawerItemStyle: { display: 'none' } }} />
       <Drawer.Screen name="loyalty" options={{ title: 'Fidélité' }} />
       <Drawer.Screen name="beneficiaries" options={{ title: 'Bénéficiaires' }} />
       <Drawer.Screen name="profile" options={{ title: 'Mon Profil' }} />
@@ -558,63 +521,194 @@ export default function AppLayout() {
       <Drawer.Screen name="merchant/profile" options={{ title: 'Mon entreprise' }} />
       <Drawer.Screen name="merchant/settings" options={{ title: 'Paramètres' }} />
       <Drawer.Screen name="merchant/help" options={{ title: 'Aide' }} />
-      {/* OAuth Partners — pages ouvertes via deep-link, cachées du drawer */}
-      <Drawer.Screen
-        name="trade-pay"
-        options={{ title: 'Paiement', drawerItemStyle: { display: 'none' } }}
-      />
-      <Drawer.Screen
-        name="oauth-consent"
-        options={{ title: 'Autorisation', drawerItemStyle: { display: 'none' } }}
-      />
+      <Drawer.Screen name="trade-pay" options={{ title: 'Paiement', drawerItemStyle: { display: 'none' } }} />
+      <Drawer.Screen name="oauth-consent" options={{ title: 'Autorisation', drawerItemStyle: { display: 'none' } }} />
     </Drawer>
   );
 }
 
+export default function AppLayout() {
+  return <AppDrawer />;
+}
+
 const styles = StyleSheet.create({
-  drawerContainer: { flex: 1, backgroundColor: '#1e293b' },
-  drawerHeader: { paddingTop: 50, paddingBottom: 16, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#334155' },
+  container: { flex: 1 },
+
+  // ─── Header ───
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingBottom: 14,
+  },
   logoContainer: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  logoIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#1e40af20', justifyContent: 'center', alignItems: 'center' },
-  logoText: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  switchingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
-  switchingText: { color: '#fff', fontSize: 18, fontWeight: '600', marginTop: 20 },
-  switchingSubText: { color: '#94a3b8', fontSize: 14, marginTop: 8 },
-  userInfo: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 16, backgroundColor: '#33415530', marginHorizontal: 16, marginTop: 16, marginBottom: 8, borderRadius: 16, borderWidth: 1, borderColor: '#334155' },
-  avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#1e40af', justifyContent: 'center', alignItems: 'center', position: 'relative', overflow: 'hidden' },
-  avatarText: { color: '#fff', fontSize: 22, fontWeight: 'bold' },
+  logoIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  logoText: { fontSize: 20, fontWeight: '700' },
+  closeBtn: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
+
+  centerBox: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
+  switchingText: { fontSize: 17, fontWeight: '600', marginTop: 18 },
+  switchingSub: { fontSize: 13, marginTop: 6 },
+
+  scroll: { flex: 1 },
+
+  // ─── Carte profil ───
+  profileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  avatar: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: '#2563eb',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  avatarText: { color: '#fff', fontSize: 20, fontWeight: '700' },
   avatarImage: { width: '100%', height: '100%' },
-  onlineBadge: { position: 'absolute', bottom: 2, right: 2, width: 12, height: 12, borderRadius: 6, backgroundColor: '#3b82f6', borderWidth: 2, borderColor: '#1e293b' },
-  userInfoText: { flex: 1, marginLeft: 12 },
-  userName: { color: '#fff', fontSize: 16, fontWeight: '600', marginBottom: 2 },
-  userEmail: { color: '#94a3b8', fontSize: 12, marginBottom: 4 },
-  kycBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#3b82f620', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, alignSelf: 'flex-start' },
-  kycText: { color: '#3b82f6', fontSize: 10, fontWeight: '500' },
-  separator: { height: 1, backgroundColor: '#334155', marginHorizontal: 16, marginVertical: 12 },
-  scrollContainer: { flex: 1 },
-  scrollContent: { paddingBottom: 20 },
-  sectionTitle: { color: '#64748b', fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginHorizontal: 20, marginTop: 16, marginBottom: 8 },
-  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 20, marginHorizontal: 12, borderRadius: 12 },
-  menuIconContainer: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
-  menuItemText: { color: '#fff', fontSize: 15, fontWeight: '500' },
-  footer: { marginTop: 'auto', marginBottom: 30 },
-  logoutButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 20, marginHorizontal: 16, borderRadius: 12, backgroundColor: '#ef444420' },
-  logoutIconContainer: { width: 36, alignItems: 'center' },
-  logoutText: { color: '#ef4444', fontSize: 15, fontWeight: '500', marginLeft: 8 },
-  merchantBanner: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginTop: 8, marginBottom: 16, padding: 12, borderRadius: 16, gap: 12 },
-  merchantBannerIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  merchantBannerText: { flex: 1 },
-  merchantBannerTitle: { color: '#1e40af', fontSize: 14, fontWeight: '600' },
-  merchantBannerSubtitle: { color: '#94a3b8', fontSize: 12, marginTop: 2 },
-  switchButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1e40af', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, gap: 4 },
-  switchButtonText: { color: '#fff', fontSize: 12, fontWeight: '500' },
-  merchantMenuItem: { backgroundColor: '#1e40af10', marginTop: 4, marginBottom: 8 },
-  merchantIcon: { backgroundColor: '#1e40af20' },
-  merchantText: { color: '#1e40af', fontWeight: '600' },
-  merchantInfo: { flex: 1, marginLeft: 8 },
-  merchantStoreName: { color: '#94a3b8', fontSize: 11, marginTop: 2 },
-  activeMerchantBadge: { marginLeft: 'auto' },
-  merchantBadge: { backgroundColor: '#1e40af', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, marginLeft: 'auto' },
-  merchantBadgeText: { color: '#1e293b', fontSize: 10, fontWeight: 'bold' },
+  onlineBadge: {
+    position: 'absolute',
+    bottom: 1,
+    right: 1,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#22c55e',
+    borderWidth: 2.5,
+  },
+  profileText: { flex: 1, marginLeft: 12, minWidth: 0 },
+  profileName: { fontSize: 16, fontWeight: '700', marginBottom: 1 },
+  profileEmail: { fontSize: 12, marginBottom: 5 },
+  kycBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#3b82f618',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    alignSelf: 'flex-start',
+  },
+  kycText: { color: '#3b82f6', fontSize: 10, fontWeight: '700' },
+
+  // ─── CTA commerçant (bannière dégradée) ───
+  ctaBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 18,
+    marginBottom: 8,
+    gap: 12,
+    shadowColor: '#2563eb',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  ctaIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ctaTextWrap: { flex: 1, minWidth: 0 },
+  ctaTitle: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  ctaSubtitle: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 },
+  proBadge: { backgroundColor: 'rgba(255,255,255,0.25)', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8 },
+  proBadgeText: { color: '#fff', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
+  switchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 14,
+  },
+  switchBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+
+  // ─── Section ───
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginTop: 18,
+    marginBottom: 10,
+    marginLeft: 4,
+  },
+
+  // ─── Carte d'item ───
+  menuCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  menuIcon: { width: 44, height: 44, borderRadius: 13, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  menuTextWrap: { flex: 1, minWidth: 0 },
+  menuTitle: { fontSize: 15, fontWeight: '600' },
+  menuDesc: { fontSize: 12, marginTop: 2 },
+
+  // ─── Carte Pro ───
+  proCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 18,
+  },
+  proCardIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 13,
+    backgroundColor: '#f59e0b22',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+
+  // ─── Déconnexion ───
+  logoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 16,
+  },
+  logoutText: { color: '#ef4444', fontSize: 15, fontWeight: '700' },
+
+  // ─── Footer ───
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    paddingTop: 14,
+    borderTopWidth: 1,
+  },
+  footerItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  footerText: { fontSize: 13, fontWeight: '500' },
+  footerSwitch: { transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] },
 });

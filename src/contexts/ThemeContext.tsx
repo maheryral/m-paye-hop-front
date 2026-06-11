@@ -51,7 +51,7 @@ const THEME_STORAGE_KEY = '@theme_mode';
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const systemColorScheme = useColorScheme();
-  const [mode, setModeState] = useState<ThemeMode>('dark');
+  const [mode, setModeState] = useState<ThemeMode>('light');
   const [isLoading, setIsLoading] = useState(true);
 
   // Palette dynamique : par défaut bundle defaults, puis remplacée par les
@@ -71,8 +71,8 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (savedMode && ['light', 'dark', 'system'].includes(savedMode)) {
         setModeState(savedMode as ThemeMode);
       } else {
-        // Par défaut, utiliser le thème système
-        setModeState('dark');
+        // Par défaut, thème clair (design dashboard M'Paye)
+        setModeState('light');
       }
     } catch (error) {
       console.error('Erreur lors du chargement du thème:', error);

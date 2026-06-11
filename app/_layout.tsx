@@ -2,10 +2,19 @@
 import { Stack } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { View, StatusBar, ActivityIndicator, StyleSheet, Text } from 'react-native';
+import { View, StatusBar, ActivityIndicator, StyleSheet, Text, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, cloneElement } from 'react';
 import * as SplashScreen from 'expo-splash-screen';
+import {
+  useFonts,
+  Poppins_400Regular,
+  Poppins_500Medium,
+  Poppins_600SemiBold,
+  Poppins_700Bold,
+  Poppins_800ExtraBold,
+} from '@expo-google-fonts/poppins';
+import { Font } from '../constants/fonts';
 import { StripeProvider } from '@stripe/stripe-react-native';
 import { ThemeProvider, useTheme } from '../src/contexts/ThemeContext';
 import { AuthProvider } from '../src/contexts/AuthContext';
@@ -19,6 +28,46 @@ import NotificationToast from '../src/components/NotificationToast';
 import { DeepLinkHandler } from '../src/components/DeepLinkHandler';
 
 SplashScreen.preventAutoHideAsync();
+
+/**
+ * Applique Poppins globalement en injectant la bonne variante selon le
+ * `fontWeight` de chaque <Text>/<TextInput>. Les styles qui fixent déjà un
+ * fontFamily sont respectés. Permet de garder les poids existants de l'app
+ * sans toucher à chaque écran.
+ */
+function weightToPoppins(weight?: string | number): string {
+  switch (String(weight ?? '400')) {
+    case '500':
+      return Font.medium;
+    case '600':
+      return Font.semibold;
+    case '700':
+    case 'bold':
+      return Font.bold;
+    case '800':
+    case '900':
+      return Font.extrabold;
+    default:
+      return Font.regular;
+  }
+}
+
+function patchDefaultFont(Component: any) {
+  if (!Component || Component.__poppinsPatched) return;
+  Component.__poppinsPatched = true;
+  const originalRender = Component.render;
+  Component.render = function (...args: any[]) {
+    const element = originalRender.apply(this, args);
+    const flat = StyleSheet.flatten(element.props.style) || {};
+    const fontFamily = flat.fontFamily || weightToPoppins(flat.fontWeight);
+    return cloneElement(element, {
+      style: [element.props.style, { fontFamily }],
+    });
+  };
+}
+
+patchDefaultFont(Text);
+patchDefaultFont(TextInput);
 
 function CustomSplashScreen() {
   const { colors } = useTheme();
@@ -44,6 +93,13 @@ function ThemedStatusBar() {
 function RootLayoutNav() {
   const { colors } = useTheme();
   const [isReady, setIsReady] = useState(false);
+  const [fontsLoaded] = useFonts({
+    Poppins_400Regular,
+    Poppins_500Medium,
+    Poppins_600SemiBold,
+    Poppins_700Bold,
+    Poppins_800ExtraBold,
+  });
   // Clé publishable Stripe : config super-admin en priorité, sinon variable d'env
   const [stripeKey, setStripeKey] = useState<string>(
     process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '',
@@ -79,7 +135,7 @@ function RootLayoutNav() {
     })();
   }, []);
 
-  if (!isReady) {
+  if (!isReady || !fontsLoaded) {
     return <CustomSplashScreen />;
   }
 

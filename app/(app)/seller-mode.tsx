@@ -27,7 +27,7 @@ import { useSocket } from '../../src/contexts/SocketContext';
 import { transactionService } from '../../src/services/api';
 import GradientHeader from '../../src/components/GradientHeader';
 
-const BLUE_GRADIENT: [string, string] = ['#0f172a', '#1e40af'];
+const BLUE_GRADIENT: [string, string] = ['#2563eb', '#1e40af'];
 
 export default function SellerMode() {
   const { colors } = useTheme();
