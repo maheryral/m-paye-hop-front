@@ -238,7 +238,7 @@ const verifyOTP = async () => {
         <TouchableOpacity style={styles.modeButton} onPress={() => setLoginMode('phone')} activeOpacity={0.8}>
           {loginMode === 'phone' ? (
             <LinearGradient
-              colors={['#1e3a8a', '#3b82f6']}
+              colors={['#2563eb', '#1e40af']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.modeButtonInner}
@@ -248,7 +248,7 @@ const verifyOTP = async () => {
             </LinearGradient>
           ) : (
             <View style={styles.modeButtonInner}>
-              <Ionicons name="call-outline" size={16} color="#9ca3af" />
+              <Ionicons name="call-outline" size={16} color="#64748b" />
               <Text style={styles.modeButtonText}>Téléphone</Text>
             </View>
           )}
@@ -256,7 +256,7 @@ const verifyOTP = async () => {
         <TouchableOpacity style={styles.modeButton} onPress={() => setLoginMode('email')} activeOpacity={0.8}>
           {loginMode === 'email' ? (
             <LinearGradient
-              colors={['#1e3a8a', '#3b82f6']}
+              colors={['#2563eb', '#1e40af']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.modeButtonInner}
@@ -266,7 +266,7 @@ const verifyOTP = async () => {
             </LinearGradient>
           ) : (
             <View style={styles.modeButtonInner}>
-              <Ionicons name="mail-outline" size={16} color="#9ca3af" />
+              <Ionicons name="mail-outline" size={16} color="#64748b" />
               <Text style={styles.modeButtonText}>E-mail</Text>
             </View>
           )}
@@ -282,7 +282,7 @@ const verifyOTP = async () => {
             <TextInput
               style={styles.phoneInput}
               placeholder="32 12 345 67"
-              placeholderTextColor="#6b7280"
+              placeholderTextColor="#64748b"
               value={phoneNumber}
               onChangeText={(text) => setPhoneNumber(formatPhoneNumber(text))}
               keyboardType="phone-pad"
@@ -292,12 +292,12 @@ const verifyOTP = async () => {
       ) : (
         <View style={styles.emailInputSection}>
           <View style={styles.inputIcon}>
-            <Ionicons name="mail-outline" size={20} color="#6b7280" />
+            <Ionicons name="mail-outline" size={20} color="#64748b" />
           </View>
           <TextInput
             style={styles.emailInput}
             placeholder="Adresse e-mail"
-            placeholderTextColor="#6b7280"
+            placeholderTextColor="#64748b"
             value={email}
             onChangeText={setEmail}
             autoCapitalize="none"
@@ -312,7 +312,7 @@ const verifyOTP = async () => {
         activeOpacity={0.85}
       >
         <LinearGradient
-          colors={(!(loginMode === 'phone' ? phoneNumber : email)) ? ['#475569', '#475569'] : ['#1e3a8a', '#3b82f6']}
+          colors={(!(loginMode === 'phone' ? phoneNumber : email)) ? ['#94a3b8', '#94a3b8'] : ['#2563eb', '#1e40af']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.nextButton}
@@ -353,12 +353,12 @@ const verifyOTP = async () => {
           <Text style={styles.choiceButtonTitle}>Code SMS</Text>
           <Text style={styles.choiceButtonSubtitle}>Recevez un code à 6 chiffres</Text>
         </View>
-        <Ionicons name="chevron-forward" size={20} color="#6b7280" />
+        <Ionicons name="chevron-forward" size={20} color="#64748b" />
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.choiceButton} onPress={() => setStep('password')} activeOpacity={0.85}>
         <LinearGradient
-          colors={['#1e3a8a', '#3b82f6']}
+          colors={['#2563eb', '#1e40af']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.choiceIcon}
@@ -369,11 +369,11 @@ const verifyOTP = async () => {
           <Text style={styles.choiceButtonTitle}>Mot de passe</Text>
           <Text style={styles.choiceButtonSubtitle}>Utilisez votre mot de passe</Text>
         </View>
-        <Ionicons name="chevron-forward" size={20} color="#6b7280" />
+        <Ionicons name="chevron-forward" size={20} color="#64748b" />
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.backButtonChoice} onPress={() => setStep('identifier')}>
-        <Ionicons name="arrow-back" size={16} color="#a78bfa" />
+        <Ionicons name="arrow-back" size={16} color="#2563eb" />
         <Text style={styles.backButtonChoiceText}>Retour</Text>
       </TouchableOpacity>
     </>
@@ -383,18 +383,18 @@ const verifyOTP = async () => {
     <>
       <View style={styles.passwordContainer}>
         <View style={styles.inputIcon}>
-          <Ionicons name="lock-closed-outline" size={20} color="#6b7280" />
+          <Ionicons name="lock-closed-outline" size={20} color="#64748b" />
         </View>
         <TextInput
           style={styles.passwordInput}
           placeholder="Mot de passe"
-          placeholderTextColor="#6b7280"
+          placeholderTextColor="#64748b"
           value={password}
           onChangeText={setPassword}
           secureTextEntry={!showPassword}
         />
         <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-          <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color="#6b7280" />
+          <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color="#64748b" />
         </TouchableOpacity>
       </View>
 
@@ -416,7 +416,7 @@ const verifyOTP = async () => {
         activeOpacity={0.85}
       >
         <LinearGradient
-          colors={!password ? ['#475569', '#475569'] : ['#1e3a8a', '#3b82f6']}
+          colors={!password ? ['#94a3b8', '#94a3b8'] : ['#2563eb', '#1e40af']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.nextButton}
@@ -431,7 +431,7 @@ const verifyOTP = async () => {
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.backButtonChoice} onPress={() => setStep('method')}>
-        <Ionicons name="arrow-back" size={16} color="#007aff" />
+        <Ionicons name="arrow-back" size={16} color="#2563eb" />
         <Text style={styles.backButtonChoiceText}>Retour</Text>
       </TouchableOpacity>
     </>
@@ -480,7 +480,7 @@ const verifyOTP = async () => {
         activeOpacity={0.85}
       >
         <LinearGradient
-          colors={otpCode.join('').length !== 6 ? ['#475569', '#475569'] : ['#1e3a8a', '#3b82f6']}
+          colors={otpCode.join('').length !== 6 ? ['#94a3b8', '#94a3b8'] : ['#2563eb', '#1e40af']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.nextButton}
@@ -495,7 +495,7 @@ const verifyOTP = async () => {
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.backButtonChoice} onPress={() => setStep('method')}>
-        <Ionicons name="arrow-back" size={16} color="#007aff" />
+        <Ionicons name="arrow-back" size={16} color="#2563eb" />
         <Text style={styles.backButtonChoiceText}>Retour</Text>
       </TouchableOpacity>
     </>
@@ -518,19 +518,19 @@ const verifyOTP = async () => {
       >
         {/* Halo dégradé en arrière-plan */}
         <LinearGradient
-          colors={['#1e3a8a33', 'transparent']}
+          colors={['#2563eb22', 'transparent']}
           style={styles.backgroundGlow}
           pointerEvents="none"
         />
 
         <View style={styles.content}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="chevron-back" size={24} color="#fff" />
+            <Ionicons name="chevron-back" size={24} color="#0f172a" />
           </TouchableOpacity>
 
           <View style={styles.logoContainer}>
             <LinearGradient
-              colors={['#1e3a8a', '#3b82f6']}
+              colors={['#2563eb', '#1e40af']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.logoCircle}
@@ -554,8 +554,8 @@ const verifyOTP = async () => {
             <View style={[styles.errorIcon, { backgroundColor: '#ef444420' }]}>
               <Ionicons name="alert-circle" size={50} color="#ef4444" />
             </View>
-            <Text style={[styles.errorTitle, { color: '#fff' }]}>Erreur</Text>
-            <Text style={[styles.errorMessage, { color: '#9ca3af' }]}>{errorMessage}</Text>
+            <Text style={[styles.errorTitle, { color: '#0f172a' }]}>Erreur</Text>
+            <Text style={[styles.errorMessage, { color: '#64748b' }]}>{errorMessage}</Text>
           </Animated.View>
         </View>
       </Modal>
@@ -566,7 +566,7 @@ const verifyOTP = async () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#f8fafc',
   },
   backgroundGlow: {
     position: 'absolute',
@@ -584,7 +584,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(15,23,42,0.05)',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 20,
@@ -602,7 +602,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
-    shadowColor: '#1e3a8a',
+    shadowColor: '#2563eb',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.45,
     shadowRadius: 18,
@@ -611,23 +611,23 @@ const styles = StyleSheet.create({
   logoText: {
     fontSize: 30,
     fontWeight: '800',
-    color: '#ffffff',
+    color: '#0f172a',
     letterSpacing: 1,
     marginBottom: 6,
   },
   welcomeSubtitle: {
     fontSize: 14,
-    color: '#94a3b8',
+    color: '#64748b',
     fontWeight: '500',
   },
   modeSelector: {
     flexDirection: 'row',
-    backgroundColor: '#1e293b',
+    backgroundColor: '#ffffff',
     borderRadius: 28,
     padding: 4,
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#e2e8f0',
     gap: 4,
   },
   modeButton: {
@@ -644,7 +644,7 @@ const styles = StyleSheet.create({
   modeButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#9ca3af',
+    color: '#64748b',
   },
   activeModeText: {
     color: '#fff',
@@ -653,9 +653,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#e2e8f0',
     borderRadius: 16,
-    backgroundColor: '#1e293b',
+    backgroundColor: '#ffffff',
     marginBottom: 18,
     overflow: 'hidden',
   },
@@ -663,12 +663,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     borderRightWidth: 1,
-    borderRightColor: '#334155',
-    backgroundColor: 'rgba(102,126,234,0.1)',
+    borderRightColor: '#e2e8f0',
+    backgroundColor: 'rgba(37,99,235,0.08)',
   },
   countryCodeText: {
     fontSize: 16,
-    color: '#a78bfa',
+    color: '#2563eb',
     fontWeight: '700',
   },
   phoneInputContainer: {
@@ -677,16 +677,16 @@ const styles = StyleSheet.create({
   phoneInput: {
     padding: 16,
     fontSize: 16,
-    color: '#ffffff',
+    color: '#0f172a',
     fontWeight: '500',
   },
   emailInputSection: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#e2e8f0',
     borderRadius: 16,
-    backgroundColor: '#1e293b',
+    backgroundColor: '#ffffff',
     marginBottom: 18,
     paddingHorizontal: 16,
   },
@@ -697,7 +697,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 16,
     fontSize: 16,
-    color: '#ffffff',
+    color: '#0f172a',
     fontWeight: '500',
   },
   nextButton: {
@@ -708,7 +708,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingVertical: 16,
     marginBottom: 20,
-    shadowColor: '#1e3a8a',
+    shadowColor: '#2563eb',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.4,
     shadowRadius: 12,
@@ -728,23 +728,23 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   footerLinkText: {
-    color: '#a78bfa',
+    color: '#2563eb',
     fontSize: 14,
     fontWeight: '600',
   },
   footerSeparator: {
-    color: '#475569',
+    color: '#94a3b8',
     fontSize: 12,
   },
   choiceButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1e293b',
+    backgroundColor: '#ffffff',
     borderRadius: 18,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#e2e8f0',
   },
   choiceIcon: {
     width: 48,
@@ -764,11 +764,11 @@ const styles = StyleSheet.create({
   choiceButtonTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#ffffff',
+    color: '#0f172a',
   },
   choiceButtonSubtitle: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: '#64748b',
     marginTop: 3,
   },
   backButtonChoice: {
@@ -780,7 +780,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   backButtonChoiceText: {
-    color: '#a78bfa',
+    color: '#2563eb',
     fontSize: 14,
     fontWeight: '600',
   },
@@ -788,9 +788,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#e2e8f0',
     borderRadius: 16,
-    backgroundColor: '#1e293b',
+    backgroundColor: '#ffffff',
     marginBottom: 16,
     paddingHorizontal: 16,
   },
@@ -798,7 +798,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 16,
     fontSize: 16,
-    color: '#ffffff',
+    color: '#0f172a',
     fontWeight: '500',
   },
   forgotPasswordButton: {
@@ -806,26 +806,26 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   forgotPasswordText: {
-    color: '#a78bfa',
+    color: '#2563eb',
     fontSize: 13,
     fontWeight: '600',
   },
   otpTitle: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#ffffff',
+    color: '#0f172a',
     textAlign: 'center',
     marginBottom: 10,
   },
   otpSubtitle: {
     fontSize: 13,
-    color: '#9ca3af',
+    color: '#64748b',
     textAlign: 'center',
     marginBottom: 28,
     lineHeight: 20,
   },
   otpIdentifier: {
-    color: '#a78bfa',
+    color: '#2563eb',
     fontWeight: '700',
   },
   otpContainer: {
@@ -838,10 +838,10 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 56,
     borderWidth: 1.5,
-    borderColor: '#334155',
+    borderColor: '#e2e8f0',
     borderRadius: 14,
-    backgroundColor: '#1e293b',
-    color: '#ffffff',
+    backgroundColor: '#ffffff',
+    color: '#0f172a',
     fontSize: 22,
     fontWeight: '700',
     textAlign: 'center',
@@ -851,15 +851,15 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   timerText: {
-    color: '#9ca3af',
+    color: '#64748b',
     fontSize: 13,
   },
   timerCount: {
-    color: '#a78bfa',
+    color: '#2563eb',
     fontWeight: '700',
   },
   resendText: {
-    color: '#a78bfa',
+    color: '#2563eb',
     fontSize: 14,
     fontWeight: '600',
   },
@@ -871,7 +871,7 @@ const styles = StyleSheet.create({
   },
   errorModal: {
     width: '80%',
-    backgroundColor: '#1e293b',
+    backgroundColor: '#ffffff',
     borderRadius: 20,
     padding: 24,
     alignItems: 'center',
@@ -892,11 +892,11 @@ const styles = StyleSheet.create({
   errorTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#0f172a',
   },
   errorMessage: {
     fontSize: 14,
     textAlign: 'center',
-    color: '#9ca3af',
+    color: '#64748b',
   },
 });

@@ -1,7 +1,8 @@
 // src/contexts/ThemeContext.tsx
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { userPreferencesService } from '../services/api';
 import {
   DEFAULT_DARK_COLORS,
   DEFAULT_LIGHT_COLORS,
@@ -125,10 +126,15 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const setMode = (newMode: ThemeMode) => {
+  // useCallback → identité STABLE. Sinon le LocaleContext (qui sync le thème
+  // depuis /user/preferences et dépend de setMode) se relance à chaque toggle
+  // et ré-applique l'ancien thème → le mode sombre "rebondissait" en clair.
+  const setMode = useCallback((newMode: ThemeMode) => {
     setModeState(newMode);
     saveThemeMode(newMode);
-  };
+    // Persiste côté backend pour que la prochaine sync garde le bon thème.
+    userPreferencesService.update({ theme: newMode }).catch(() => {});
+  }, []);
 
   const toggleTheme = () => {
     if (mode === 'light') {

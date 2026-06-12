@@ -2,8 +2,8 @@
 // Barre de navigation basse réutilisable (Accueil · Services · Scan · Messages · Profil).
 // À rendre une fois dans le conteneur racine (flex/relatif) de chaque écran ;
 // elle se positionne en absolu en bas. L'onglet actif est déduit de la route.
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Keyboard, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, usePathname, useNavigation } from 'expo-router';
@@ -21,6 +21,21 @@ export default function BottomTabBar() {
   const { colors } = useTheme();
 
   const isActive = (route: string) => pathname === route || pathname.startsWith(route + '/');
+
+  // Masque la barre quand le clavier est ouvert (sinon elle cache le champ saisi).
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvt, () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideEvt, () => setKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  if (keyboardVisible) return null;
 
   return (
     <View

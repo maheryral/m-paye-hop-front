@@ -10,13 +10,13 @@ import {
   RefreshControl,
   Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useTheme } from '../../../src/contexts/ThemeContext';
 import { useAuth } from '../../../src/contexts/AuthContext';
 import { useSocket } from '../../../src/contexts/SocketContext';
 import GradientHeader from '../../../src/components/GradientHeader';
+import BottomTabBar from '../../../src/components/BottomTabBar';
 import { messagingApi, Conversation } from '../../../src/services/messagingApi';
 
 export default function MessagesHome() {
@@ -156,7 +156,7 @@ export default function MessagesHome() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['bottom']}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <GradientHeader title="Messages" subtitle="Vos conversations" />
 
       {loading ? (
@@ -191,7 +191,9 @@ export default function MessagesHome() {
         <Ionicons name="headset" size={22} color="#fff" />
         <Text style={styles.fabText}>Support</Text>
       </TouchableOpacity>
-    </SafeAreaView>
+
+      <BottomTabBar />
+    </View>
   );
 }
 
@@ -238,7 +240,7 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 16,
-    bottom: 20,
+    bottom: 96,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,

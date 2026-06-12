@@ -74,12 +74,19 @@ export const paymentApi = {
       rejectionReason,
     }),
 
-  // Stripe (carte)
+  // Stripe (carte) — dépôt sur son propre wallet
   createStripeIntent: (amount: number) =>
     api.post<StripeIntentResponse>('/payments/stripe/intent', { amount }),
 
   confirmStripeDeposit: (paymentRequestId: string) =>
     api.post<PaymentRequest>(`/payments/stripe/${paymentRequestId}/confirm`),
+
+  // Stripe (carte) — PAIEMENT direct vers un autre user (débit carte, wallet jamais touché)
+  createCardTransferIntent: (toPhone: string, amount: number) =>
+    api.post<StripeIntentResponse>('/payments/stripe/transfer/intent', { toPhone, amount }),
+
+  confirmCardTransfer: (paymentRequestId: string) =>
+    api.post<PaymentRequest>(`/payments/stripe/transfer/${paymentRequestId}/confirm`),
 };
 
 export default paymentApi;

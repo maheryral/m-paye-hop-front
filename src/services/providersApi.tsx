@@ -24,10 +24,16 @@ export const providersApi = {
    * Timeout étendu à 45s : le backend attend le verdict MVola (polling
    * jusqu'à 30s) avant de répondre. Sans ce timeout, axios couperait avant.
    */
-  mobileMoneyDeposit: (code: string, amount: number, phone: string) =>
+  mobileMoneyDeposit: (
+    code: string,
+    amount: number,
+    phone: string,
+    /** Si fourni → PAIEMENT DIRECT : crédite ce destinataire, pas le wallet du payeur. */
+    toPhone?: string,
+  ) =>
     api.post<MobileMoneyInitResult>(
       '/providers/mobile-money/deposit',
-      { code, amount, phone },
+      { code, amount, phone, ...(toPhone ? { toPhone } : {}) },
       { timeout: 45000 },
     ),
 };

@@ -486,10 +486,11 @@ export default function Transfers() {
   );
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
       {/* ═══════════ HEADER BLEU ═══════════ */}
       <LinearGradient
         colors={['#2563eb', '#1e40af', '#1e3a8a']}
@@ -572,9 +573,10 @@ export default function Transfers() {
           </View>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
 
       <BottomTabBar />
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

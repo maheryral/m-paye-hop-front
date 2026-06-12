@@ -18,6 +18,8 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import NotificationBadge from '../../src/components/NotificationBadge';
 import BottomTabBar from '../../src/components/BottomTabBar';
+import CardsModal from '../../src/components/CardsModal';
+import SearchModal from '../../src/components/SearchModal';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useWallet } from '../../src/contexts/WalletContext';
 import { useTheme } from '../../src/contexts/ThemeContext';
@@ -81,6 +83,8 @@ export default function Dashboard() {
   const [transactions, setTransactions] = useState<RecentTx[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [card, setCard] = useState<SavedCard | null>(null);
+  const [cardsModalVisible, setCardsModalVisible] = useState(false);
+  const [searchVisible, setSearchVisible] = useState(false);
   const [promoIndex, setPromoIndex] = useState(0);
 
   useEffect(() => {
@@ -211,7 +215,7 @@ export default function Dashboard() {
   const PROMO_CARD_WIDTH = screenWidth - 40 - 60; // padding + peek du card suivant
 
   return (
-    <SafeAreaView edges={['bottom']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
+    <View style={[styles.safeArea, { backgroundColor: colors.background }]}>
       <StatusBar style="light" />
       <ScrollView
         style={{ flex: 1 }}
@@ -228,8 +232,8 @@ export default function Dashboard() {
           end={{ x: 0.9, y: 1 }}
           style={[styles.topBlue, { paddingTop: insets.top + 12 }]}
         >
-          <View style={styles.topBlueDecor1} />
-          <View style={styles.topBlueDecor2} />
+          <View style={styles.topBlueDecor1} pointerEvents="none" />
+          <View style={styles.topBlueDecor2} pointerEvents="none" />
 
           {/* ── Header ── */}
           <View style={styles.header}>
@@ -250,7 +254,7 @@ export default function Dashboard() {
             </TouchableOpacity>
 
             <View style={styles.headerRight}>
-              <TouchableOpacity style={styles.iconCircle} onPress={() => router.push('/bills')}>
+              <TouchableOpacity style={styles.iconCircle} onPress={() => setSearchVisible(true)}>
                 <Ionicons name="search" size={18} color="#fff" />
               </TouchableOpacity>
               <TouchableOpacity style={styles.iconCircle} onPress={() => router.push('/notifications')}>
@@ -262,15 +266,16 @@ export default function Dashboard() {
 
           {/* ── Carte solde ── */}
           <Animated.View entering={FadeInDown.delay(120).duration(500)} style={styles.balanceCard}>
-            <View style={styles.balanceDecor1} />
+            <View style={styles.balanceDecor1} pointerEvents="none" />
 
             {/* Carte par défaut (réelle) en haut à droite */}
             <TouchableOpacity
               style={styles.visaMock}
               activeOpacity={0.8}
-              onPress={() => router.push('/portfolio')}
+              onPress={() => setCardsModalVisible(true)}
+              hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
             >
-              <View style={styles.visaChip} />
+              <View style={styles.visaChip} pointerEvents="none" />
               <Text style={styles.visaBrand}>{card ? card.brand.toUpperCase() : 'CARTE'}</Text>
               <Text style={styles.visaNumber}>{card ? `•••• ${card.last4}` : '+ Ajouter'}</Text>
             </TouchableOpacity>
@@ -444,7 +449,17 @@ export default function Dashboard() {
 
       {/* ═══════════ BOTTOM TAB BAR (composant partagé) ═══════════ */}
       <BottomTabBar />
-    </SafeAreaView>
+
+      {/* Modal gestion des cartes (clic sur la mini-carte) */}
+      <CardsModal
+        visible={cardsModalVisible}
+        onClose={() => setCardsModalVisible(false)}
+        onChanged={loadCard}
+      />
+
+      {/* Modal recherche (services + pages) */}
+      <SearchModal visible={searchVisible} onClose={() => setSearchVisible(false)} />
+    </View>
   );
 }
 
@@ -544,14 +559,15 @@ const styles = StyleSheet.create({
   },
   visaMock: {
     position: 'absolute',
-    top: 16,
-    right: 16,
-    width: 80,
-    height: 50,
+    top: 14,
+    right: 14,
+    width: 88,
+    height: 56,
     borderRadius: 10,
     backgroundColor: 'rgba(255,255,255,0.12)',
-    padding: 8,
+    padding: 9,
     justifyContent: 'space-between',
+    zIndex: 5,
   },
   visaChip: {
     width: 18,

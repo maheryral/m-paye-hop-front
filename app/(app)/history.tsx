@@ -11,8 +11,11 @@ import {
   RefreshControl,
   ActivityIndicator,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import GradientHeader from '../../src/components/GradientHeader';
@@ -30,8 +33,27 @@ interface Transaction {
   totalAmount: number;
   createdAt: string;
   isCredit: boolean;
+  method?: 'CARD' | 'MVOLA' | 'AIRTEL' | 'ORANGE' | 'WALLET' | null;
   sender?: { fullName: string; email: string; telephone: string };
   receiver?: { fullName: string; email: string; telephone: string };
+}
+
+/** Métadonnées d'affichage du mode de financement (badge). null = wallet (pas de badge). */
+function methodMeta(
+  m?: string | null,
+): { label: string; icon: keyof typeof Ionicons.glyphMap; color: string } | null {
+  switch (m) {
+    case 'CARD':
+      return { label: 'Carte', icon: 'card', color: '#6366f1' };
+    case 'MVOLA':
+      return { label: 'MVola', icon: 'phone-portrait', color: '#ec4899' };
+    case 'AIRTEL':
+      return { label: 'Airtel', icon: 'phone-portrait', color: '#ef4444' };
+    case 'ORANGE':
+      return { label: 'Orange', icon: 'phone-portrait', color: '#f97316' };
+    default:
+      return null;
+  }
 }
 
 const PAGE_SIZE = 20;
@@ -44,6 +66,7 @@ export default function History() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [generatingReceipt, setGeneratingReceipt] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'credit' | 'debit'>('all');
   // Pré-remplit la recherche via query param ?q=... (ex: depuis page Bénéficiaires)
   const params = useLocalSearchParams<{ q?: string }>();
@@ -132,6 +155,101 @@ export default function History() {
     return tx.motif || 'Transaction';
   };
 
+  const typeLabel = (tx: Transaction) =>
+    tx.type === 'DEPOSIT' ? 'Dépôt' : tx.type === 'WITHDRAWAL' ? 'Retrait' : 'Transfert';
+
+  const escapeHtml = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  /** Construit le HTML du reçu (rendu en PDF par expo-print). */
+  const buildReceiptHtml = (tx: Transaction) => {
+    const isCreditLike = tx.isCredit || tx.type === 'DEPOSIT';
+    const sign = isCreditLike ? '+' : '-';
+    const fmt = (n: number) => `${Number(n || 0).toLocaleString('fr-FR')} Ar`;
+    const date = new Date(tx.createdAt).toLocaleString('fr-FR');
+
+    const row = (label: string, value: string, mono = false) => `
+      <tr>
+        <td class="lbl">${label}</td>
+        <td class="val"${mono ? ' style="font-family:monospace"' : ''}>${value}</td>
+      </tr>`;
+
+    const rows = [
+      row('Type', typeLabel(tx)),
+      row('Montant', `<b>${sign}${fmt(tx.montant)}</b>`),
+      tx.feeAmount > 0 ? row('Frais', fmt(tx.feeAmount)) : '',
+      tx.totalAmount ? row('Total débité', fmt(tx.totalAmount)) : '',
+      row('Statut', tx.statut),
+      row('Date', date),
+      tx.motif ? row('Motif', escapeHtml(tx.motif)) : '',
+      row('Référence', tx.reference, true),
+      tx.sender
+        ? row('Expéditeur', `${escapeHtml(tx.sender.fullName)}<br/><span class="muted">${escapeHtml(tx.sender.email || tx.sender.telephone || '')}</span>`)
+        : '',
+      tx.receiver
+        ? row('Destinataire', `${escapeHtml(tx.receiver.fullName)}<br/><span class="muted">${escapeHtml(tx.receiver.email || tx.receiver.telephone || '')}</span>`)
+        : '',
+    ].join('');
+
+    return `<!DOCTYPE html>
+<html><head><meta charset="utf-8" />
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Roboto, 'Segoe UI', sans-serif; color: #0f172a; padding: 32px; }
+  .header { display:flex; align-items:center; justify-content:space-between; border-bottom: 3px solid #2563eb; padding-bottom: 16px; }
+  .brand { font-size: 26px; font-weight: 800; color: #2563eb; }
+  .brand span { color:#1e3a8a; }
+  .doc { text-align:right; color:#64748b; font-size:12px; }
+  h1 { font-size: 18px; margin: 28px 0 4px; }
+  .sub { color:#64748b; font-size:12px; margin-bottom:18px; }
+  .amount { text-align:center; margin: 24px 0; }
+  .amount .big { font-size: 34px; font-weight: 800; color:${isCreditLike ? '#16a34a' : '#dc2626'}; }
+  table { width:100%; border-collapse: collapse; margin-top: 8px; }
+  td { padding: 11px 4px; border-bottom: 1px solid #e2e8f0; font-size: 13px; vertical-align: top; }
+  td.lbl { color:#64748b; width: 40%; }
+  td.val { text-align:right; font-weight:600; }
+  .muted { color:#94a3b8; font-weight:400; font-size:11px; }
+  .footer { margin-top: 32px; text-align:center; color:#94a3b8; font-size: 11px; line-height:1.6; }
+  .stamp { display:inline-block; margin-top:14px; padding:6px 14px; border:1.5px solid #16a34a; color:#16a34a; border-radius:8px; font-weight:700; font-size:12px; }
+</style></head>
+<body>
+  <div class="header">
+    <div class="brand">M'<span>Paye</span></div>
+    <div class="doc">REÇU DE TRANSACTION<br/>${new Date(tx.createdAt).toLocaleDateString('fr-FR')}</div>
+  </div>
+  <h1>${typeLabel(tx)} — ${tx.statut}</h1>
+  <div class="sub">Référence : ${tx.reference}</div>
+  <div class="amount"><div class="big">${sign}${fmt(tx.montant)}</div></div>
+  <table>${rows}</table>
+  <div class="footer">
+    <div class="stamp">✓ ${tx.statut}</div>
+    <p>Ce reçu est généré automatiquement par M'Paye et ne nécessite pas de signature.<br/>
+    Conservez-le comme justificatif de votre transaction.</p>
+  </div>
+</body></html>`;
+  };
+
+  /** Génère le PDF et ouvre la feuille de partage / enregistrement. */
+  const downloadReceipt = async (tx: Transaction) => {
+    try {
+      setGeneratingReceipt(true);
+      const { uri } = await Print.printToFileAsync({ html: buildReceiptHtml(tx) });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, {
+          mimeType: 'application/pdf',
+          dialogTitle: `Reçu ${tx.reference}`,
+          UTI: 'com.adobe.pdf',
+        });
+      } else {
+        Alert.alert('Reçu généré', `PDF enregistré :\n${uri}`);
+      }
+    } catch (e: any) {
+      Alert.alert('Erreur', "Impossible de générer le reçu PDF.");
+    } finally {
+      setGeneratingReceipt(false);
+    }
+  };
+
   const filteredTransactions = transactions.filter(tx => {
     if (filterType === 'credit' && !tx.isCredit && tx.type !== 'DEPOSIT') return false;
     if (filterType === 'debit' && (tx.isCredit || tx.type === 'DEPOSIT')) return false;
@@ -194,6 +312,15 @@ export default function History() {
             >
               Ref: {item.reference.slice(0, 8)}
             </Text>
+            {(() => {
+              const mm = methodMeta(item.method);
+              return mm ? (
+                <View style={[styles.methodChip, { backgroundColor: `${mm.color}18` }]}>
+                  <Ionicons name={mm.icon} size={10} color={mm.color} />
+                  <Text style={[styles.methodChipText, { color: mm.color }]}>Payé via {mm.label}</Text>
+                </View>
+              ) : null;
+            })()}
           </View>
         </View>
         <View style={styles.transactionRight}>
@@ -362,6 +489,14 @@ export default function History() {
                     value={tx.type === 'DEPOSIT' ? 'Dépôt' : 'Transfert'}
                     colors={colors}
                   />
+                  {methodMeta(tx.method) && (
+                    <DetailRow
+                      label="Payé via"
+                      value={methodMeta(tx.method)!.label}
+                      valueColor={methodMeta(tx.method)!.color}
+                      colors={colors}
+                    />
+                  )}
                   <DetailRow
                     label="Montant"
                     value={`${isCreditLike ? '+' : '-'}${tx.montant.toLocaleString()} Ar`}
@@ -428,6 +563,22 @@ export default function History() {
                     </View>
                   )}
                 </View>
+
+                <TouchableOpacity
+                  style={[styles.receiptBtn, { backgroundColor: colors.primary, opacity: generatingReceipt ? 0.7 : 1 }]}
+                  onPress={() => downloadReceipt(tx)}
+                  disabled={generatingReceipt}
+                  activeOpacity={0.85}
+                >
+                  {generatingReceipt ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="download-outline" size={18} color="#fff" />
+                      <Text style={styles.receiptBtnText}>Télécharger le reçu (PDF)</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
               </ScrollView>
               );
             })()}
@@ -570,6 +721,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 96,
   },
+  receiptBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginTop: 16,
+  },
+  receiptBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  methodChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  methodChipText: { fontSize: 10, fontWeight: '700' },
   transactionCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',

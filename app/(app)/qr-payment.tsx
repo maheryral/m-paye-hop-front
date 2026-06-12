@@ -27,9 +27,31 @@ import * as Sharing from 'expo-sharing';
 import { captureRef } from 'react-native-view-shot';
 import QRCode from 'react-native-qrcode-svg';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useStripe } from '@stripe/stripe-react-native';
 import { transactionService, qrService } from '../../src/services/api';
+import { providersApi } from '../../src/services/providersApi';
+import { paymentApi } from '../../src/services/paymentApi';
+import { cardsApi } from '../../src/services/cardsApi';
 import { useLocale } from '../../src/contexts/LocaleContext';
 import { useSocket } from '../../src/contexts/SocketContext';
+
+// ── Modes de paiement proposés au scan ──
+type PayMethodId = 'wallet' | 'card' | 'mvola' | 'orange' | 'airtel';
+interface PayMethod {
+  id: PayMethodId;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  /** code provider backend pour la recharge mobile money (si applicable) */
+  providerCode?: string;
+}
+const PAY_METHODS: PayMethod[] = [
+  { id: 'wallet', label: 'Wallet', icon: 'wallet', color: '#2563eb' },
+  { id: 'card', label: 'Carte', icon: 'card', color: '#6366f1' },
+  { id: 'mvola', label: 'MVola', icon: 'phone-portrait', color: '#ec4899', providerCode: 'MVOLA' },
+  { id: 'orange', label: 'Orange Money', icon: 'phone-portrait', color: '#f97316', providerCode: 'ORANGE_MONEY' },
+  { id: 'airtel', label: 'Airtel Money', icon: 'phone-portrait', color: '#ef4444', providerCode: 'AIRTEL_MONEY' },
+];
 
 export default function QRPayment() {
   const router = useRouter();
@@ -39,6 +61,11 @@ export default function QRPayment() {
   const { balance, fetchBalance } = useWallet();
   const { formatCurrency } = useLocale();
   const { onNotification } = useSocket();
+  const { confirmPayment } = useStripe();
+  // Mode de paiement choisi avant le scan + modes réellement disponibles.
+  const [selectedMethod, setSelectedMethod] = useState<PayMethodId>('wallet');
+  const [availableMethods, setAvailableMethods] = useState<Set<PayMethodId>>(new Set(['wallet']));
+  const [mvolaPhone, setMvolaPhone] = useState('');
   const [scanMode, setScanMode] = useState(true);
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
@@ -84,6 +111,28 @@ export default function QRPayment() {
     return unsub;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Modes de paiement réellement disponibles (providers actifs côté backend).
+  useEffect(() => {
+    if (user?.telephone) setMvolaPhone(user.telephone);
+    providersApi
+      .getPublic()
+      .then((r) => {
+        const avail = new Set<PayMethodId>(['wallet']);
+        for (const p of r.data || []) {
+          if (p.type === 'CARD') avail.add('card');
+          const code = (p.code || '').toUpperCase();
+          if (code.includes('MVOLA')) avail.add('mvola');
+          else if (code.includes('ORANGE')) avail.add('orange');
+          else if (code.includes('AIRTEL')) avail.add('airtel');
+        }
+        setAvailableMethods(avail);
+      })
+      .catch(() => {
+        // backend HS → wallet seulement
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.telephone]);
 
   // 📡 Récupère les vraies transactions de l'API (5 dernières, tout type)
   const loadRecentTransactions = async () => {
@@ -181,27 +230,102 @@ export default function QRPayment() {
     }
   };
 
+  /**
+   * Garantit que le wallet a assez pour payer `montant` selon le mode choisi.
+   *  - wallet            : exige un solde suffisant (sinon false + invite)
+   *  - carte / mvola     : recharge le manquant via ce mode puis renvoie true
+   *  - orange / airtel   : indisponible pour l'instant ("Bientôt")
+   * Affiche ses propres alertes en cas d'échec.
+   */
+  const ensureFunds = async (montant: number): Promise<boolean> => {
+    if (balance >= montant) return true;
+    const missing = Math.ceil(montant - balance);
+
+    if (selectedMethod === 'wallet') {
+      Alert.alert('Solde insuffisant', 'Rechargez votre wallet ou choisissez un autre mode de paiement.');
+      return false;
+    }
+    if (selectedMethod === 'orange' || selectedMethod === 'airtel') {
+      Alert.alert('Bientôt disponible', "Ce mode de paiement n'est pas encore actif.");
+      return false;
+    }
+
+    // ── MVola : recharge mobile money du montant manquant ──
+    if (selectedMethod === 'mvola') {
+      const phone = mvolaPhone.trim();
+      if (!phone) {
+        Alert.alert('Numéro requis', 'Saisissez votre numéro MVola pour recharger.');
+        return false;
+      }
+      try {
+        const res = await providersApi.mobileMoneyDeposit('MVOLA', missing, phone);
+        if (res.data.status === 'SUCCESS') {
+          await fetchBalance();
+          return true;
+        }
+        Alert.alert(
+          res.data.status === 'FAILED' ? 'Recharge refusée' : 'Recharge en attente',
+          res.data.message || 'Réessayez ou utilisez un autre mode.',
+        );
+        return false;
+      } catch (e: any) {
+        Alert.alert('Erreur MVola', e?.response?.data?.message || 'Recharge impossible.');
+        return false;
+      }
+    }
+
+    // ── Carte : recharge via carte enregistrée (Stripe) ──
+    if (selectedMethod === 'card') {
+      try {
+        const list = (await cardsApi.list()).data || [];
+        const sel = list.find((c) => c.isDefault) ?? list[0];
+        if (!sel?.stripePaymentMethodId) {
+          Alert.alert('Aucune carte', 'Ajoutez une carte dans le Portefeuille pour payer par carte.');
+          return false;
+        }
+        const intent = await paymentApi.createStripeIntent(missing);
+        const clientSecret = intent.data.clientSecret;
+        if (!clientSecret) throw new Error('clientSecret manquant');
+        const { paymentIntent, error } = await confirmPayment(clientSecret, {
+          paymentMethodType: 'Card',
+          paymentMethodData: { paymentMethodId: sel.stripePaymentMethodId } as any,
+        });
+        if (error || paymentIntent?.status !== 'Succeeded') {
+          Alert.alert('Paiement carte refusé', error?.message || 'Réessayez.');
+          return false;
+        }
+        await paymentApi.confirmStripeDeposit(intent.data.paymentRequestId);
+        await fetchBalance();
+        return true;
+      } catch (e: any) {
+        Alert.alert('Erreur carte', e?.response?.data?.message || e?.message || 'Recharge impossible.');
+        return false;
+      }
+    }
+
+    return false;
+  };
+
   // Confirme et exécute le paiement du QR marchand
   const confirmMerchantQrPayment = async () => {
     if (!merchantQr) return;
-    if (Number(merchantQr.montant) > balance) {
-      Alert.alert('Solde insuffisant', 'Veuillez recharger votre wallet.');
-      return;
-    }
+    const montant = Number(merchantQr.montant);
     const label = merchantQr.mode === 'DIRECT_MOBILE'
-      ? `Payer ${Number(merchantQr.montant).toLocaleString()} Ar à ${merchantQr.payoutOperatorLabel}`
-      : `Payer ${Number(merchantQr.montant).toLocaleString()} Ar à ${merchantQr.merchant.nom}`;
+      ? `Payer ${montant.toLocaleString()} Ar à ${merchantQr.payoutOperatorLabel}`
+      : `Payer ${montant.toLocaleString()} Ar à ${merchantQr.merchant.nom}`;
     const ok = await requireBiometric(label);
     if (!ok) return;
 
     setMerchantQrLoading(true);
     try {
+      // Recharge-puis-paie selon le mode choisi avant le scan.
+      const funded = await ensureFunds(montant);
+      if (!funded) return;
       const idem = `qr-${merchantQr.reference}-${Date.now()}`;
       await qrService.pay(merchantQr.reference, idem);
       await fetchBalance();
-      const paidAmount = Number(merchantQr.montant);
       setMerchantQr(null);
-      showSuccessAnimation(paidAmount);
+      showSuccessAnimation(montant);
     } catch (e: any) {
       Alert.alert('Erreur', e?.response?.data?.message || 'Paiement refusé');
     } finally {
@@ -259,50 +383,101 @@ export default function QRPayment() {
     }
   };
 
+  /**
+   * Paiement DIRECT par carte → crédite le destinataire sans toucher le wallet.
+   * (charge la carte par défaut via Stripe, puis le backend crédite le destinataire)
+   */
+  const payByCardDirect = async (toPhone: string, amt: number): Promise<boolean> => {
+    try {
+      const list = (await cardsApi.list()).data || [];
+      const sel = list.find((c) => c.isDefault) ?? list[0];
+      if (!sel?.stripePaymentMethodId) {
+        Alert.alert('Aucune carte', 'Ajoutez une carte dans le Portefeuille pour payer par carte.');
+        return false;
+      }
+      const intent = await paymentApi.createCardTransferIntent(toPhone, amt);
+      const clientSecret = intent.data.clientSecret;
+      if (!clientSecret) throw new Error('clientSecret manquant');
+      const { paymentIntent, error } = await confirmPayment(clientSecret, {
+        paymentMethodType: 'Card',
+        paymentMethodData: { paymentMethodId: sel.stripePaymentMethodId } as any,
+      });
+      if (error || paymentIntent?.status !== 'Succeeded') {
+        Alert.alert('Paiement carte refusé', error?.message || 'Réessayez.');
+        return false;
+      }
+      await paymentApi.confirmCardTransfer(intent.data.paymentRequestId);
+      return true;
+    } catch (e: any) {
+      Alert.alert('Erreur carte', e?.response?.data?.message || e?.message || 'Paiement impossible.');
+      return false;
+    }
+  };
+
   const handlePayment = async () => {
     if (!amount || parseFloat(amount) <= 0) {
       Alert.alert('Erreur', 'Veuillez entrer un montant valide');
       return;
     }
-    if (parseFloat(amount) > balance) {
-      Alert.alert('Erreur', 'Solde insuffisant');
+    const amt = parseFloat(amount);
+    const identifier = scannedData?.email || scannedData?.telephone;
+    if (!identifier) {
+      Alert.alert('Erreur', 'Informations du destinataire manquantes');
       return;
     }
 
-    const ok = await requireBiometric(
-      `Confirmez le paiement de ${parseFloat(amount).toLocaleString()} Ar`,
-    );
+    const ok = await requireBiometric(`Confirmez le paiement de ${amt.toLocaleString()} Ar`);
     if (!ok) return;
 
     setLoading(true);
     try {
-      let identifier = '';
-      if (scannedData.email) {
-        identifier = scannedData.email;
-      } else if (scannedData.telephone) {
-        identifier = scannedData.telephone;
-      } else {
-        Alert.alert('Erreur', 'Informations du destinataire manquantes');
-        setLoading(false);
+      // 💳 Carte : débit DIRECT de la carte (le wallet n'est jamais touché)
+      if (selectedMethod === 'card') {
+        const done = await payByCardDirect(identifier, amt);
+        if (!done) return;
+        await fetchBalance();
+        showSuccessAnimation(amt);
         return;
       }
 
+      // 📱 Mobile money : débit DIRECT — on charge le mobile money du payeur et
+      // le destinataire est crédité directement (le wallet n'est jamais touché).
+      if (selectedMethod !== 'wallet') {
+        const method = PAY_METHODS.find((m) => m.id === selectedMethod);
+        if (!method?.providerCode || !availableMethods.has(selectedMethod)) {
+          Alert.alert('Bientôt disponible', "Ce mode de paiement n'est pas encore actif.");
+          return;
+        }
+        const phone = mvolaPhone.trim();
+        if (!phone) {
+          Alert.alert('Numéro requis', 'Saisissez votre numéro mobile money.');
+          return;
+        }
+        const res = await providersApi.mobileMoneyDeposit(method.providerCode, amt, phone, identifier);
+        if (res.data.status === 'SUCCESS') {
+          showSuccessAnimation(amt);
+        } else {
+          Alert.alert(
+            res.data.status === 'FAILED' ? 'Paiement refusé' : 'En attente',
+            res.data.message || 'Réessayez ou utilisez un autre mode.',
+          );
+        }
+        return;
+      }
+
+      // 👛 Wallet : transfert direct depuis le solde
+      if (balance < amt) {
+        Alert.alert('Solde insuffisant', 'Rechargez votre wallet ou choisissez un autre mode.');
+        return;
+      }
       // 🔒 Idempotency-Key contre double-tap et retry réseau
-      const idem = `qr-tx-${identifier}-${amount}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const idem = `qr-tx-${identifier}-${amt}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       await transactionService.transfer(
-        {
-          toPhone: identifier,
-          amount: parseFloat(amount),
-          motif: 'Transfert QR code',
-        },
+        { toPhone: identifier, amount: amt, motif: 'Transfert QR code' },
         idem,
       );
-      
       await fetchBalance();
-      
-      // Afficher l'animation de succès au lieu de l'alert
-      showSuccessAnimation(parseFloat(amount));
-      
+      showSuccessAnimation(amt);
     } catch (error: any) {
       console.error('Erreur paiement:', error);
       Alert.alert('Erreur', error.response?.data?.message || 'Erreur lors du paiement');
@@ -491,11 +666,65 @@ export default function QRPayment() {
                     <View style={styles.scannerFrame} />
                   </View>
                 </View>
-                <View style={styles.scannerInstructions}>
-                  <Ionicons name="qr-code-outline" size={24} color={colors.primary} />
-                  <Text style={[styles.scannerText, { color: colors.textSecondary }]}>
-                    Placez le QR code dans le cadre
-                  </Text>
+                {/* ── Payer avec : choix du mode de paiement ── */}
+                <View style={styles.payWithSection}>
+                  <Text style={[styles.payWithTitle, { color: colors.text }]}>Payer avec</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.payWithRow}
+                  >
+                    {PAY_METHODS.map((m) => {
+                      const avail = availableMethods.has(m.id);
+                      const active = selectedMethod === m.id;
+                      return (
+                        <TouchableOpacity
+                          key={m.id}
+                          disabled={!avail}
+                          onPress={() => setSelectedMethod(m.id)}
+                          activeOpacity={0.8}
+                          style={[
+                            styles.payChip,
+                            {
+                              borderColor: active ? m.color : colors.border,
+                              backgroundColor: active ? `${m.color}15` : colors.background,
+                              opacity: avail ? 1 : 0.45,
+                            },
+                          ]}
+                        >
+                          <View style={[styles.payChipIcon, { backgroundColor: m.color }]}>
+                            <Ionicons name={m.icon} size={15} color="#fff" />
+                          </View>
+                          <Text
+                            style={[styles.payChipLabel, { color: active ? m.color : colors.text }]}
+                            numberOfLines={1}
+                          >
+                            {m.label}
+                          </Text>
+                          {!avail && <Text style={styles.paySoon}>Bientôt</Text>}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+
+                  {selectedMethod === 'mvola' && availableMethods.has('mvola') && (
+                    <TextInput
+                      style={[styles.mvolaInput, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
+                      placeholder="Numéro MVola (ex: 0343500004)"
+                      placeholderTextColor={colors.textSecondary}
+                      value={mvolaPhone}
+                      onChangeText={setMvolaPhone}
+                      keyboardType="phone-pad"
+                      maxLength={13}
+                    />
+                  )}
+
+                  <View style={styles.scannerInstructions}>
+                    <Ionicons name="scan-outline" size={18} color={colors.primary} />
+                    <Text style={[styles.scannerText, { color: colors.textSecondary }]}>
+                      Scannez le QR — débité sur {PAY_METHODS.find((x) => x.id === selectedMethod)?.label}
+                    </Text>
+                  </View>
                 </View>
                 {scanned && !showPaymentForm && (
                   <TouchableOpacity style={[styles.scanAgainButton, { borderColor: colors.primary }]} onPress={resetScanner}>
@@ -815,8 +1044,33 @@ const styles = StyleSheet.create({
   camera: { width: '100%', height: '100%' },
   scannerOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)' },
   scannerFrame: { width: 250, height: 250, borderWidth: 2, borderColor: '#fff', borderRadius: 20, backgroundColor: 'transparent' },
-  scannerInstructions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, gap: 8 },
-  scannerText: { fontSize: 14 },
+  scannerInstructions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, gap: 8 },
+  scannerText: { fontSize: 13, textAlign: 'center', flexShrink: 1 },
+
+  // ── Sélecteur "Payer avec" ──
+  payWithSection: { paddingHorizontal: 14, paddingTop: 14, paddingBottom: 6 },
+  payWithTitle: { fontSize: 14, fontWeight: '700', marginBottom: 10 },
+  payWithRow: { gap: 8, paddingRight: 8 },
+  payChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1.5,
+  },
+  payChipIcon: { width: 26, height: 26, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  payChipLabel: { fontSize: 13, fontWeight: '600' },
+  paySoon: { fontSize: 9, fontWeight: '700', color: '#94a3b8', marginLeft: 2 },
+  mvolaInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    marginTop: 12,
+  },
   scanAgainButton: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10, alignSelf: 'center', marginBottom: 16 },
   scanAgainText: { fontSize: 14, fontWeight: '500' },
   paymentForm: { padding: 20, borderRadius: 20, gap: 16 },

@@ -18,6 +18,7 @@ import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import GradientHeader from '../../src/components/GradientHeader';
+import BottomTabBar from '../../src/components/BottomTabBar';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { accountService, resolveAssetUrl } from '../../src/services/api';
 import { useLocale } from '../../src/contexts/LocaleContext';
@@ -539,6 +540,8 @@ export default function Profile() {
           )}
         </View>
       </ScrollView>
+
+      <BottomTabBar />
     </View>
   );
 }
@@ -546,7 +549,7 @@ export default function Profile() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  content: { padding: 20, paddingBottom: 40 },
+  content: { padding: 20, paddingBottom: 96 },
 
   avatarContainer: { alignItems: 'center', marginBottom: 24 },
   avatar: {
