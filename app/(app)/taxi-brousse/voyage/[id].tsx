@@ -97,30 +97,37 @@ export default function VoyageDetail() {
   };
 
   const handlePay = async (
-    mode: 'wallet' | 'cash' | 'mobile_money',
+    mode: 'wallet' | 'cash' | 'mobile_money' | 'card',
+    advanceMode: 'wallet' | 'mobile_money' | 'card' = 'wallet',
   ) => {
     if (reservations.length === 0) return;
     const total = reservations.reduce((s, r) => s + Number(r.prixPaye), 0);
-    if (mode === 'wallet' && balance < total) {
+    // Espèces → acompte 50 % maintenant, reste en espèces à bord
+    const isCash = mode === 'cash';
+    const amountNow = isCash ? Math.round(total * 0.5) : total;
+    const payNow: 'wallet' | 'mobile_money' | 'card' = isCash ? advanceMode : mode;
+    if (payNow === 'wallet' && balance < amountNow) {
       Alert.alert(
         'Solde insuffisant',
-        `Solde: ${formatPrice(balance)}, requis: ${formatPrice(total)}. Rechargez votre wallet d'abord.`,
+        `Solde: ${formatPrice(balance)}, requis: ${formatPrice(amountNow)}. Rechargez votre wallet d'abord.`,
       );
       return;
     }
-    if (mode === 'wallet') {
+    if (payNow === 'wallet') {
       const ok = await requireBiometric(
-        `Confirmez le paiement de ${formatPrice(total)}`,
+        `Confirmez le paiement de ${formatPrice(amountNow)}`,
       );
       if (!ok) return;
     }
     setPaying(true);
     try {
       const ids = reservations.map((r) => r.id);
-      await taxiBrousseApi.payReservationBatch(ids, mode);
+      await taxiBrousseApi.payReservationBatch(ids, mode, advanceMode);
       Alert.alert(
-        'Paiement réussi ✅',
-        `${reservations.length} place(s) confirmée(s) · ${formatPrice(total)}`,
+        isCash ? 'Acompte payé ✅' : 'Paiement réussi ✅',
+        isCash
+          ? `Acompte de ${formatPrice(amountNow)} payé · reste ${formatPrice(total - amountNow)} en espèces à bord.`
+          : `${reservations.length} place(s) confirmée(s) · ${formatPrice(total)}`,
         [
           {
             text: 'Voir mes réservations',
@@ -373,7 +380,39 @@ export default function VoyageDetail() {
             <TouchableOpacity
               style={[styles.payOption, { borderColor: colors.border }]}
               disabled={paying}
-              onPress={() => handlePay('cash')}
+              onPress={() => handlePay('card')}
+            >
+              <View style={[styles.payIcon, { backgroundColor: '#6366f120' }]}>
+                <Ionicons name="card-outline" size={20} color="#6366f1" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.payTitle, { color: colors.text }]}>
+                  Carte bancaire
+                </Text>
+                <Text style={[styles.paySubtitle, { color: colors.textSecondary }]}>
+                  Débit sur votre carte par défaut
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.payOption, { borderColor: colors.border }]}
+              disabled={paying}
+              onPress={() => {
+                const total = reservations.reduce((s, r) => s + Number(r.prixPaye), 0);
+                const advance = Math.round(total * 0.5);
+                Alert.alert(
+                  'Acompte 50%',
+                  `Payez ${formatPrice(advance)} maintenant · le reste ${formatPrice(total - advance)} en espèces à bord. Régler l'acompte avec :`,
+                  [
+                    { text: 'Wallet', onPress: () => handlePay('cash', 'wallet') },
+                    { text: 'Carte', onPress: () => handlePay('cash', 'card') },
+                    { text: 'Mobile Money', onPress: () => handlePay('cash', 'mobile_money') },
+                    { text: 'Annuler', style: 'cancel' },
+                  ],
+                );
+              }}
             >
               <View style={[styles.payIcon, { backgroundColor: '#f59e0b20' }]}>
                 <Ionicons name="cash-outline" size={20} color="#f59e0b" />
@@ -383,7 +422,7 @@ export default function VoyageDetail() {
                   Espèces à bord
                 </Text>
                 <Text style={[styles.paySubtitle, { color: colors.textSecondary }]}>
-                  Paiement le jour du voyage
+                  Acompte 50% maintenant · reste en espèces
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />

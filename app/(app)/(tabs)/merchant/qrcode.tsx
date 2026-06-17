@@ -13,6 +13,7 @@ import {
   ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import GradientHeader from '../../../../src/components/GradientHeader';
 import QRCode from 'react-native-qrcode-svg';
 import { useTheme } from '../../../../src/contexts/ThemeContext';
 import { useAuth } from '../../../../src/contexts/AuthContext';
@@ -122,7 +123,9 @@ export default function MerchantQRCode() {
   };
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <GradientHeader title="Mon QR code" />
+      <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
       {/* En-tête */}
     
 
@@ -319,6 +322,7 @@ export default function MerchantQRCode() {
         </View>
       </View>
     </ScrollView>
+    </View>
   );
 }
 

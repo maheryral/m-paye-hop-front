@@ -29,8 +29,11 @@ export interface Transaction {
   customerPhone?: string;
   customerEmail?: string;
   createdAt: string;
-  paymentMethod: 'alipay' | 'wechat' | 'card' | 'cash' | 'bank';
+  paymentMethod: 'alipay' | 'wechat' | 'card' | 'cash' | 'bank' | 'mpaye';
   transactionId: string;
+  motif?: string;
+  description?: string;
+  title?: string;
   storeId?: string;
   storeName?: string;
   items?: Array<{
@@ -86,6 +89,8 @@ export interface MerchantProfile {
   businessType: string;
   registrationNumber: string;
   isActive: boolean;
+  validationStatus?: string;
+  rejectionReason?: string;
   balance: number;
   storeCount: number;
   verifiedAt?: string;
@@ -93,6 +98,9 @@ export interface MerchantProfile {
   phone?: string;
   email?: string;
   description?: string;
+  logoUrl?: string;
+  coverUrl?: string;
+  website?: string;
   defaultTaxRate?: number;
   vatNumber?: string;
 }
@@ -266,6 +274,37 @@ export const merchantApi = {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
   updateProfile: (data: Partial<MerchantProfile>) => api.put('/merchant/profile', data),
+
+  /**
+   * Uploade le logo du marchand. `asset` = résultat expo-image-picker (uri).
+   * Renvoie le profil mis à jour (avec logoUrl).
+   */
+  uploadLogo: (asset: { uri: string; mimeType?: string; fileName?: string }) => {
+    const form = new FormData();
+    form.append('file', {
+      uri: asset.uri,
+      name: asset.fileName || 'logo.jpg',
+      type: asset.mimeType || 'image/jpeg',
+    } as any);
+    return api.post<MerchantProfile>('/merchant/profile/logo', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  removeLogo: () => api.delete<MerchantProfile>('/merchant/profile/logo'),
+
+  /** Uploade la couverture/bannière du marchand. Renvoie le profil mis à jour. */
+  uploadCover: (asset: { uri: string; mimeType?: string; fileName?: string }) => {
+    const form = new FormData();
+    form.append('file', {
+      uri: asset.uri,
+      name: asset.fileName || 'cover.jpg',
+      type: asset.mimeType || 'image/jpeg',
+    } as any);
+    return api.post<MerchantProfile>('/merchant/profile/cover', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  removeCover: () => api.delete<MerchantProfile>('/merchant/profile/cover'),
 
   // Dashboard
   getDashboardStats: () => api.get<DashboardStats>('/merchant/dashboard/stats'),
@@ -470,6 +509,8 @@ export const merchantApi = {
     api.get('/merchant/notifications', { params: { page, limit } }),
   markNotificationAsRead: (notificationId: string) => api.patch(`/merchant/notifications/${notificationId}/read`),
   markAllNotificationsAsRead: () => api.patch('/merchant/notifications/read-all'),
+  deleteNotification: (notificationId: string) => api.delete(`/merchant/notifications/${notificationId}`),
+  clearNotifications: () => api.delete('/merchant/notifications/clear'),
 
   // KYC
   submitKYCDocuments: (documents: FormData) => api.post('/merchant/kyc/documents', documents, {

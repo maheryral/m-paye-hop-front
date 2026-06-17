@@ -13,6 +13,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import GradientHeader from '../../../../src/components/GradientHeader';
 import { useTheme } from '../../../../src/contexts/ThemeContext';
 import {
   merchantApi,
@@ -91,7 +92,9 @@ export default function MerchantLoyalty() {
   }
 
   return (
-    <ScrollView
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <GradientHeader title="Fidélité" />
+      <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={{ padding: 16 }}
       refreshControl={
@@ -236,6 +239,7 @@ export default function MerchantLoyalty() {
       </View>
       <View style={{ height: 30 }} />
     </ScrollView>
+    </View>
   );
 }
 

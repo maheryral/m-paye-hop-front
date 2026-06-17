@@ -334,9 +334,12 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 6,
+    textAlign: 'center',
   },
   deckScroll: {
     paddingVertical: 8,
+    flexGrow: 1,
+    justifyContent: 'center',
   },
   row: {
     flexDirection: 'row',
@@ -376,6 +379,7 @@ const styles = StyleSheet.create({
   driverIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
     marginBottom: 12,
   },
@@ -386,7 +390,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
   },
   legend: {
     flexDirection: 'row',

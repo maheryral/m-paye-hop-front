@@ -7,6 +7,7 @@ import { secureStorage } from '../src/services/secureStorage';
 export default function Index() {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isMerchantContext, setIsMerchantContext] = useState(false);
 
   useEffect(() => {
 
@@ -18,10 +19,14 @@ export default function Index() {
       const token = await secureStorage.getItem('accessToken');
       // (user kept in AsyncStorage but not needed for auth check)
 
-      
+
       const isValid = !!token;
 
-      
+      // Dernier contexte actif sur ce téléphone (user | merchant) :
+      // permet de rouvrir directement sur l'espace marchand.
+      const activeContext = await secureStorage.getItem('activeContext');
+      setIsMerchantContext(activeContext === 'merchant');
+
       setIsAuthenticated(isValid);
     } catch (error) {
       console.error('❌ Erreur:', error);
@@ -43,7 +48,15 @@ export default function Index() {
   }
 
   if (isAuthenticated) {
-    return <Redirect href="/(app)/dashboard" />;
+    return (
+      <Redirect
+        href={
+          isMerchantContext
+            ? '/(app)/(tabs)/merchant/dashboard'
+            : '/(app)/dashboard'
+        }
+      />
+    );
   }
 
   return <Redirect href="/(auth)/login" />;

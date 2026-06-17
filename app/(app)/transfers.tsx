@@ -24,6 +24,27 @@ import { useLocale } from '../../src/contexts/LocaleContext';
 import { useWallet } from '../../src/contexts/WalletContext';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { transactionService } from '../../src/services/api';
+import { useStripe } from '@stripe/stripe-react-native';
+import { providersApi } from '../../src/services/providersApi';
+import { paymentApi } from '../../src/services/paymentApi';
+import { cardsApi } from '../../src/services/cardsApi';
+
+// ── Modes de paiement (comme la page QR) ──
+type PayMethodId = 'wallet' | 'card' | 'mvola' | 'orange' | 'airtel';
+interface PayMethod {
+  id: PayMethodId;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  providerCode?: string;
+}
+const PAY_METHODS: PayMethod[] = [
+  { id: 'wallet', label: 'Wallet', icon: 'wallet', color: '#2563eb' },
+  { id: 'card', label: 'Carte', icon: 'card', color: '#6366f1' },
+  { id: 'mvola', label: 'MVola', icon: 'phone-portrait', color: '#ec4899', providerCode: 'MVOLA' },
+  { id: 'orange', label: 'Orange Money', icon: 'phone-portrait', color: '#f97316', providerCode: 'ORANGE_MONEY' },
+  { id: 'airtel', label: 'Airtel Money', icon: 'phone-portrait', color: '#ef4444', providerCode: 'AIRTEL_MONEY' },
+];
 
 export default function Transfers() {
   const router = useRouter();
@@ -32,7 +53,11 @@ export default function Transfers() {
   const { formatCurrency } = useLocale();
   const { balance, fetchBalance } = useWallet();
   const { user } = useAuth();
+  const { confirmPayment } = useStripe();
   const insets = useSafeAreaInsets();
+  const [selectedMethod, setSelectedMethod] = useState<PayMethodId>('wallet');
+  const [availableMethods, setAvailableMethods] = useState<Set<PayMethodId>>(new Set(['wallet']));
+  const [mvolaPhone, setMvolaPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [showBalance, setShowBalance] = useState(true);
   const [infoOpen, setInfoOpen] = useState(true);
@@ -53,7 +78,10 @@ export default function Transfers() {
   const maxAmount = 5000000;
 
   const amountNum = parseFloat(formData.amount) || 0;
-  const hasEnoughBalance = amountNum <= balance;
+  const isWallet = selectedMethod === 'wallet';
+  // Seul le wallet exige un solde suffisant ; carte / mobile money débitent
+  // directement la source externe.
+  const hasEnoughBalance = !isWallet || amountNum <= balance;
   const isAmountValid = amountNum >= minAmount && amountNum <= maxAmount;
   const isFormValid = validatedRecipient && formData.amount && isAmountValid && hasEnoughBalance;
 
@@ -76,6 +104,26 @@ export default function Transfers() {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [amountNum]);
+
+  // Modes de paiement réellement disponibles (providers actifs côté backend).
+  useEffect(() => {
+    if (user?.telephone) setMvolaPhone(user.telephone);
+    providersApi
+      .getPublic()
+      .then((r) => {
+        const avail = new Set<PayMethodId>(['wallet']);
+        for (const p of r.data || []) {
+          if (p.type === 'CARD') avail.add('card');
+          const code = (p.code || '').toUpperCase();
+          if (code.includes('MVOLA')) avail.add('mvola');
+          else if (code.includes('ORANGE')) avail.add('orange');
+          else if (code.includes('AIRTEL')) avail.add('airtel');
+        }
+        setAvailableMethods(avail);
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.telephone]);
 
   const fee = feeCalc?.feeAmount ?? 0;
   const feePercentLabel = feeCalc ? `${(feeCalc.feePercent * 100).toFixed(2)}%` : '0%';
@@ -126,28 +174,59 @@ export default function Transfers() {
     setFormData(prev => ({ ...prev, amount: text }));
   };
 
+  /**
+   * Paiement carte DIRECT : charge la carte par défaut via Stripe, puis le
+   * backend crédite le destinataire (le wallet n'est jamais touché).
+   */
+  const payByCardDirect = async (toPhone: string, amt: number): Promise<boolean> => {
+    try {
+      const list = (await cardsApi.list()).data || [];
+      const sel = list.find((c) => c.isDefault) ?? list[0];
+      if (!sel?.stripePaymentMethodId) {
+        Alert.alert('Aucune carte', 'Ajoutez une carte dans le Portefeuille pour payer par carte.');
+        return false;
+      }
+      const intent = await paymentApi.createCardTransferIntent(toPhone, amt);
+      const clientSecret = intent.data.clientSecret;
+      if (!clientSecret) throw new Error('clientSecret manquant');
+      const { paymentIntent, error } = await confirmPayment(clientSecret, {
+        paymentMethodType: 'Card',
+        paymentMethodData: { paymentMethodId: sel.stripePaymentMethodId } as any,
+      });
+      if (error || paymentIntent?.status !== 'Succeeded') {
+        Alert.alert('Paiement carte refusé', error?.message || 'Réessayez.');
+        return false;
+      }
+      await paymentApi.confirmCardTransfer(intent.data.paymentRequestId);
+      return true;
+    } catch (e: any) {
+      Alert.alert('Erreur carte', e?.response?.data?.message || e?.message || 'Paiement impossible.');
+      return false;
+    }
+  };
+
   const handleSubmit = async () => {
     if (!validatedRecipient) {
       Alert.alert('Erreur', 'Veuillez saisir un email ou numéro de téléphone valide');
       return;
     }
-    
+
     if (!formData.amount || amountNum <= 0) {
       Alert.alert('Erreur', 'Veuillez entrer un montant valide');
       return;
     }
-    
+
     if (amountNum < minAmount) {
       Alert.alert('Erreur', `Le montant minimum est de ${minAmount.toLocaleString()} Ar`);
       return;
     }
-    
+
     if (amountNum > maxAmount) {
       Alert.alert('Erreur', `Le montant maximum est de ${maxAmount.toLocaleString()} Ar`);
       return;
     }
-    
-    if (!hasEnoughBalance) {
+
+    if (isWallet && !hasEnoughBalance) {
       Alert.alert('Erreur', `Solde insuffisant. Solde disponible: ${formatCurrency(balance)}`);
       return;
     }
@@ -161,6 +240,45 @@ export default function Transfers() {
     setStep(2);
 
     try {
+      // 💳 Carte : débit DIRECT (le wallet n'est jamais touché)
+      if (selectedMethod === 'card') {
+        const done = await payByCardDirect(formData.toPhone, amountNum);
+        if (!done) { setStep(1); return; }
+        await fetchBalance();
+        setStep(3);
+        return;
+      }
+
+      // 📱 Mobile money : débit DIRECT — on charge le mobile money du payeur,
+      // le destinataire est crédité directement.
+      if (selectedMethod !== 'wallet') {
+        const method = PAY_METHODS.find((m) => m.id === selectedMethod);
+        if (!method?.providerCode || !availableMethods.has(selectedMethod)) {
+          Alert.alert('Bientôt disponible', "Ce mode de paiement n'est pas encore actif.");
+          setStep(1);
+          return;
+        }
+        const phone = mvolaPhone.trim();
+        if (!phone) {
+          Alert.alert('Numéro requis', 'Saisissez votre numéro mobile money.');
+          setStep(1);
+          return;
+        }
+        const res = await providersApi.mobileMoneyDeposit(method.providerCode, amountNum, phone, formData.toPhone);
+        if (res.data.status === 'SUCCESS') {
+          await fetchBalance();
+          setStep(3);
+        } else {
+          Alert.alert(
+            res.data.status === 'FAILED' ? 'Paiement refusé' : 'En attente',
+            res.data.message || 'Réessayez ou utilisez un autre mode.',
+          );
+          setStep(1);
+        }
+        return;
+      }
+
+      // 👛 Wallet : transfert direct depuis le solde
       // 🔒 Idempotency-Key : double-tap ou retry → backend rejette le doublon
       const idem = `tx-${formData.toPhone}-${amountNum}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       await transactionService.transfer(
@@ -171,7 +289,7 @@ export default function Transfers() {
         },
         idem,
       );
-      
+
       await fetchBalance();
       setStep(3);
     } catch (error: any) {
@@ -190,6 +308,7 @@ export default function Transfers() {
       motif: '',
     });
     setValidatedRecipient(null);
+    setSelectedMethod('wallet');
     setStep(1);
   };
 
@@ -280,6 +399,60 @@ export default function Transfers() {
           </Text>
         </View>
       )}
+
+      {/* Sélecteur de méthode de paiement */}
+      <View style={styles.inputGroup}>
+        <Text style={[styles.label, { color: colors.text }]}>Payer avec</Text>
+        <View style={styles.methodRow}>
+          {PAY_METHODS.filter((m) => availableMethods.has(m.id)).map((m) => {
+            const active = selectedMethod === m.id;
+            return (
+              <TouchableOpacity
+                key={m.id}
+                style={[
+                  styles.methodChip,
+                  {
+                    backgroundColor: active ? `${m.color}18` : colors.card,
+                    borderColor: active ? m.color : colors.border,
+                  },
+                ]}
+                onPress={() => setSelectedMethod(m.id)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name={m.icon} size={20} color={m.color} />
+                <Text style={[styles.methodChipText, { color: active ? m.color : colors.text }]} numberOfLines={1}>
+                  {m.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Numéro mobile money si méthode opérateur choisie */}
+        {selectedMethod !== 'wallet' && selectedMethod !== 'card' && (
+          <View style={[styles.fieldCard, { borderColor: colors.border, backgroundColor: colors.card, marginTop: 4 }]}>
+            <View style={[styles.fieldIcon, { backgroundColor: `${colors.primary}14` }]}>
+              <Ionicons name="phone-portrait-outline" size={20} color={colors.primary} />
+            </View>
+            <TextInput
+              style={[styles.input, { color: colors.text }]}
+              placeholder="Votre numéro mobile money"
+              placeholderTextColor={colors.textTertiary}
+              value={mvolaPhone}
+              onChangeText={setMvolaPhone}
+              keyboardType="phone-pad"
+            />
+          </View>
+        )}
+
+        <Text style={[styles.helperText, { color: colors.textSecondary }]}>
+          {isWallet
+            ? 'Débité de votre solde M\'Paye.'
+            : selectedMethod === 'card'
+              ? 'Débité directement sur votre carte par défaut.'
+              : 'Débité directement sur votre mobile money.'}
+        </Text>
+      </View>
 
       {/* Champ montant */}
       <View style={styles.inputGroup}>
@@ -700,6 +873,19 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
   },
+
+  // ─── Sélecteur de méthode ───
+  methodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  methodChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1.5,
+  },
+  methodChipText: { fontSize: 13, fontWeight: '700' },
 
   // ─── Chips montant ───
   chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },

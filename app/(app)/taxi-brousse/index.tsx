@@ -34,6 +34,10 @@ export default function TaxiBrousseSearch() {
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Prochains départs (à venir, places dispo) — affichés par défaut
+  const [upcoming, setUpcoming] = useState<VoyageSearchResult[]>([]);
+  const [loadingUp, setLoadingUp] = useState(true);
+
   // Autocomplete villes
   const [departSugg, setDepartSugg] = useState<string[]>([]);
   const [arriveeSugg, setArriveeSugg] = useState<string[]>([]);
@@ -80,6 +84,31 @@ export default function TaxiBrousseSearch() {
       if (arriveeDebounce.current) clearTimeout(arriveeDebounce.current);
     };
   }, [arrivee, activeField]);
+
+  // Charge les prochains départs (places dispo, à venir)
+  useEffect(() => {
+    (async () => {
+      setLoadingUp(true);
+      try {
+        const res = await taxiBrousseApi.searchVoyages('', '');
+        const list = Array.isArray(res.data) ? res.data : [];
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+        setUpcoming(
+          list
+            .filter((v) => (v.placesDisponibles?.placeLibre ?? 0) > 0)
+            .filter((v) => {
+              const d = new Date(v.dateDepart);
+              return isNaN(d.getTime()) || d >= startOfToday;
+            }),
+        );
+      } catch {
+        setUpcoming([]);
+      } finally {
+        setLoadingUp(false);
+      }
+    })();
+  }, []);
 
   const pickSuggestion = (which: 'depart' | 'arrivee', value: string) => {
     if (which === 'depart') {
@@ -129,6 +158,59 @@ export default function TaxiBrousseSearch() {
 
   const formatPrice = (n: number) =>
     new Intl.NumberFormat('fr-FR').format(n) + ' Ar';
+
+  // Carte voyage réutilisable (résultats + prochains départs)
+  const renderVoyage = (v: VoyageSearchResult) => (
+    <TouchableOpacity
+      key={v.id}
+      style={[styles.voyageCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+      onPress={() => router.push(`/taxi-brousse/voyage/${v.id}` as any)}
+      activeOpacity={0.85}
+    >
+      <View style={styles.voyageHeader}>
+        <View style={[styles.classeBadge, classeColor(v.classe.type)]}>
+          <Text style={styles.classeBadgeText}>{v.classe.type.toUpperCase()}</Text>
+        </View>
+        {v.cooperative && (
+          <Text style={[styles.coopName, { color: colors.textSecondary }]}>{v.cooperative.nom}</Text>
+        )}
+      </View>
+
+      <View style={styles.voyageRoute}>
+        <View style={styles.routePoint}>
+          <Text style={[styles.routeTime, { color: colors.text }]}>{v.heureDepart}</Text>
+          <Text style={[styles.routeCity, { color: colors.text }]}>{v.villeDepart}</Text>
+        </View>
+        <View style={styles.routeArrow}>
+          <View style={[styles.routeLine, { backgroundColor: colors.border }]} />
+          <Ionicons name="bus" size={20} color="#1e40af" />
+          <View style={[styles.routeLine, { backgroundColor: colors.border }]} />
+        </View>
+        <View style={[styles.routePoint, { alignItems: 'flex-end' }]}>
+          <Text style={[styles.routeTime, { color: colors.text }]}>{v.heureArrivee}</Text>
+          <Text style={[styles.routeCity, { color: colors.text }]}>{v.villeArrivee}</Text>
+        </View>
+      </View>
+
+      <View style={styles.voyageFooter}>
+        <View style={styles.voyageInfo}>
+          <Ionicons name="people-outline" size={14} color={colors.textSecondary} />
+          <Text style={[styles.voyageInfoText, { color: colors.textSecondary }]}>
+            {v.placesDisponibles?.placeLibre ?? '?'} / {v.voiture.capacite} libres
+          </Text>
+        </View>
+        <Text style={styles.voyagePrice}>{formatPrice(v.prix)}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+
+  // Prochains départs groupés par catégorie (classe.type)
+  const grouped = upcoming.reduce<Record<string, VoyageSearchResult[]>>((acc, v) => {
+    const k = v.classe?.type || 'Standard';
+    (acc[k] = acc[k] || []).push(v);
+    return acc;
+  }, {});
+  const groupNames = Object.keys(grouped).sort();
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -295,81 +377,55 @@ export default function TaxiBrousseSearch() {
           </View>
         )}
 
-        {/* Résultats */}
-        {searched && !loading && results.length === 0 && !error && (
-          <View style={styles.emptyState}>
-            <Ionicons name="bus-outline" size={56} color={colors.textSecondary} />
-            <Text style={[styles.emptyTitle, { color: colors.text }]}>
-              Aucun voyage trouvé
+        {/* Résultats OU prochains départs par catégorie */}
+        {searched ? (
+          <>
+            {!loading && results.length === 0 && !error && (
+              <View style={styles.emptyState}>
+                <Ionicons name="bus-outline" size={56} color={colors.textSecondary} />
+                <Text style={[styles.emptyTitle, { color: colors.text }]}>Aucun voyage trouvé</Text>
+                <Text style={[styles.emptyHint, { color: colors.textSecondary }]}>
+                  Essayez d'autres villes ou une autre date
+                </Text>
+              </View>
+            )}
+            {results.length > 0 && (
+              <Text style={[styles.resultsCount, { color: colors.textSecondary }]}>
+                {results.length} voyage{results.length > 1 ? 's' : ''} disponible{results.length > 1 ? 's' : ''}
+              </Text>
+            )}
+            {results.map(renderVoyage)}
+          </>
+        ) : (
+          <>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Prochains départs</Text>
+            <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
+              Voyages à venir avec places disponibles
             </Text>
-            <Text style={[styles.emptyHint, { color: colors.textSecondary }]}>
-              Essayez d'autres villes ou une autre date
-            </Text>
-          </View>
+            {loadingUp ? (
+              <ActivityIndicator color={colors.primary} style={{ marginTop: 24 }} />
+            ) : groupNames.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="bus-outline" size={56} color={colors.textSecondary} />
+                <Text style={[styles.emptyTitle, { color: colors.text }]}>Aucun départ à venir</Text>
+              </View>
+            ) : (
+              groupNames.map((cat) => (
+                <View key={cat} style={{ marginBottom: 6 }}>
+                  <View style={styles.catHeader}>
+                    <View style={[styles.classeBadge, classeColor(cat)]}>
+                      <Text style={styles.classeBadgeText}>{cat.toUpperCase()}</Text>
+                    </View>
+                    <Text style={[styles.catCount, { color: colors.textSecondary }]}>
+                      {grouped[cat].length} voyage{grouped[cat].length > 1 ? 's' : ''}
+                    </Text>
+                  </View>
+                  {grouped[cat].map(renderVoyage)}
+                </View>
+              ))
+            )}
+          </>
         )}
-
-        {results.length > 0 && (
-          <Text style={[styles.resultsCount, { color: colors.textSecondary }]}>
-            {results.length} voyage{results.length > 1 ? 's' : ''} disponible
-            {results.length > 1 ? 's' : ''}
-          </Text>
-        )}
-
-        {results.map((v) => (
-          <TouchableOpacity
-            key={v.id}
-            style={[styles.voyageCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => router.push(`/taxi-brousse/voyage/${v.id}` as any)}
-            activeOpacity={0.85}
-          >
-            <View style={styles.voyageHeader}>
-              <View style={[styles.classeBadge, classeColor(v.classe.type)]}>
-                <Text style={styles.classeBadgeText}>
-                  {v.classe.type.toUpperCase()}
-                </Text>
-              </View>
-              {v.cooperative && (
-                <Text style={[styles.coopName, { color: colors.textSecondary }]}>
-                  {v.cooperative.nom}
-                </Text>
-              )}
-            </View>
-
-            <View style={styles.voyageRoute}>
-              <View style={styles.routePoint}>
-                <Text style={[styles.routeTime, { color: colors.text }]}>
-                  {v.heureDepart}
-                </Text>
-                <Text style={[styles.routeCity, { color: colors.text }]}>
-                  {v.villeDepart}
-                </Text>
-              </View>
-              <View style={styles.routeArrow}>
-                <View style={[styles.routeLine, { backgroundColor: colors.border }]} />
-                <Ionicons name="bus" size={20} color="#1e40af" />
-                <View style={[styles.routeLine, { backgroundColor: colors.border }]} />
-              </View>
-              <View style={[styles.routePoint, { alignItems: 'flex-end' }]}>
-                <Text style={[styles.routeTime, { color: colors.text }]}>
-                  {v.heureArrivee}
-                </Text>
-                <Text style={[styles.routeCity, { color: colors.text }]}>
-                  {v.villeArrivee}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.voyageFooter}>
-              <View style={styles.voyageInfo}>
-                <Ionicons name="people-outline" size={14} color={colors.textSecondary} />
-                <Text style={[styles.voyageInfoText, { color: colors.textSecondary }]}>
-                  {v.placesDisponibles?.placeLibre ?? '?'} / {v.voiture.capacite} libres
-                </Text>
-              </View>
-              <Text style={styles.voyagePrice}>{formatPrice(v.prix)}</Text>
-            </View>
-          </TouchableOpacity>
-        ))}
       </ScrollView>
     </SafeAreaView>
   );
@@ -474,6 +530,11 @@ const styles = StyleSheet.create({
   emptyHint: { fontSize: 13 },
 
   resultsCount: { fontSize: 12, marginBottom: 8, fontWeight: '600' },
+
+  sectionTitle: { fontSize: 18, fontWeight: '800', marginBottom: 2 },
+  sectionSub: { fontSize: 12, marginBottom: 14 },
+  catHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  catCount: { fontSize: 12, fontWeight: '600' },
 
   voyageCard: {
     padding: 14,

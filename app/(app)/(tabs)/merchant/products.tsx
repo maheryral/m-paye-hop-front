@@ -218,7 +218,7 @@ export default function MerchantProducts() {
               )}
             </View>
           </View>
-          <Text style={[styles.productPrice, { color: '#1e40af' }]}>
+          <Text style={[styles.productPrice, { color: colors.primary }]}>
             {formatCurrency(Number(p.price))}
           </Text>
         </View>
@@ -254,7 +254,7 @@ export default function MerchantProducts() {
 
         <View style={styles.actions}>
           <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: '#1e40af' }]}
+            style={[styles.actionBtn, { backgroundColor: colors.primary }]}
             onPress={() => openEdit(p)}
           >
             <Ionicons name="create-outline" size={14} color="#fff" />
@@ -316,7 +316,7 @@ export default function MerchantProducts() {
             style={[
               styles.filterBtn,
               { borderColor: colors.border },
-              filter === f && { backgroundColor: '#1e40af', borderColor: '#1e40af' },
+              filter === f && { backgroundColor: colors.primary, borderColor: colors.primary },
             ]}
             onPress={() => setFilter(f)}
           >
@@ -336,7 +336,7 @@ export default function MerchantProducts() {
       {/* Liste */}
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator color="#1e40af" />
+          <ActivityIndicator color={colors.primary} />
         </View>
       ) : (
         <FlatList
@@ -351,7 +351,7 @@ export default function MerchantProducts() {
                 setRefreshing(true);
                 load();
               }}
-              tintColor="#1e40af"
+              tintColor={colors.primary}
             />
           }
           ListEmptyComponent={
@@ -364,7 +364,7 @@ export default function MerchantProducts() {
                 Crée ton premier produit pour démarrer ton catalogue
               </Text>
               <TouchableOpacity
-                style={styles.emptyCta}
+                style={[styles.emptyCta, { backgroundColor: colors.primary }]}
                 onPress={openCreate}
               >
                 <Ionicons name="add" size={16} color="#fff" />
@@ -406,7 +406,7 @@ export default function MerchantProducts() {
                 <Switch
                   value={form.trackStock}
                   onValueChange={(v) => setForm({ ...form, trackStock: v })}
-                  trackColor={{ false: '#767577', true: '#1e40af' }}
+                  trackColor={{ false: '#767577', true: colors.primary }}
                 />
               </View>
 
@@ -439,7 +439,7 @@ export default function MerchantProducts() {
                 <Text style={{ color: colors.text, fontWeight: '700' }}>Annuler</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: '#1e40af' }]}
+                style={[styles.modalBtn, { backgroundColor: colors.primary }]}
                 onPress={save}
                 disabled={saving}
               >

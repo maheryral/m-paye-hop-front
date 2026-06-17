@@ -9,13 +9,14 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
-  Switch,
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
 import { useTheme } from '../../../../src/contexts/ThemeContext';
+import GradientHeader from '../../../../src/components/GradientHeader';
 import * as ImagePicker from 'expo-image-picker';
+import { merchantApi, MerchantProfile as ApiMerchantProfile } from '../../../../src/services/merchantApi';
+import { resolveAssetUrl } from '../../../../src/services/api';
 
 interface BusinessProfile {
   businessName: string;
@@ -35,6 +36,24 @@ interface BusinessProfile {
   bic: string;
 }
 
+const EMPTY_PROFILE: BusinessProfile = {
+  businessName: '',
+  businessType: '',
+  registrationNumber: '',
+  taxId: '',
+  email: '',
+  phone: '',
+  address: '',
+  city: '',
+  description: '',
+  website: '',
+  bankName: '',
+  accountNumber: '',
+  accountHolder: '',
+  iban: '',
+  bic: '',
+};
+
 export default function MerchantProfile() {
   const { colors } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -42,24 +61,11 @@ export default function MerchantProfile() {
   const [editing, setEditing] = useState(false);
   const [logo, setLogo] = useState<string | null>(null);
   const [coverImage, setCoverImage] = useState<string | null>(null);
-  
-  const [profile, setProfile] = useState<BusinessProfile>({
-    businessName: 'Ma Boutique',
-    businessType: 'Commerce de détail',
-    registrationNumber: 'REG-2024-001',
-    taxId: '123456789',
-    email: 'contact@maboutique.com',
-    phone: '+261 32 12 345 67',
-    address: 'Lot IV 123 Antaninarenina',
-    city: 'Antananarivo',
-    description: 'Boutique de vente de produits locaux et artisanaux',
-    website: 'www.maboutique.com',
-    bankName: 'BOA Madagascar',
-    accountNumber: '1234 5678 9012 3456',
-    accountHolder: 'Jean Rakoto',
-    iban: 'MG12 1234 5678 9012 3456 7890',
-    bic: 'BOAMGMGX',
-  });
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const [validationStatus, setValidationStatus] = useState<string>('PENDING');
+
+  const [profile, setProfile] = useState<BusinessProfile>(EMPTY_PROFILE);
 
   const businessTypes = [
     'Commerce de détail',
@@ -78,12 +84,32 @@ export default function MerchantProfile() {
     loadProfile();
   }, []);
 
+  const applyProfile = (p: ApiMerchantProfile) => {
+    setProfile((prev) => ({
+      ...prev,
+      businessName: p.businessName || '',
+      businessType: p.businessType || '',
+      registrationNumber: p.registrationNumber || '',
+      taxId: p.vatNumber || '',
+      email: p.email || '',
+      phone: p.phone || '',
+      address: p.address || '',
+      description: p.description || '',
+      website: p.website || '',
+    }));
+    // URLs serveur relatives (/uploads/...) → absolues pour <Image>
+    setLogo(p.logoUrl ? resolveAssetUrl(p.logoUrl) : null);
+    setCoverImage(p.coverUrl ? resolveAssetUrl(p.coverUrl) : null);
+    setValidationStatus(p.validationStatus || 'PENDING');
+  };
+
   const loadProfile = async () => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-    } catch (error) {
-      console.error('Erreur:', error);
+      const res = await merchantApi.getProfile();
+      applyProfile(res.data);
+    } catch (error: any) {
+      console.error('Erreur chargement profil:', error?.response?.data || error?.message);
     } finally {
       setLoading(false);
     }
@@ -105,11 +131,23 @@ export default function MerchantProfile() {
 
     setSaving(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const res = await merchantApi.updateProfile({
+        // `nom` est le champ persisté côté backend (businessName est dérivé).
+        nom: profile.businessName.trim(),
+        businessType: profile.businessType || undefined,
+        registrationNumber: profile.registrationNumber || undefined,
+        email: profile.email.trim(),
+        phone: profile.phone.trim(),
+        address: profile.address || undefined,
+        description: profile.description || undefined,
+        website: profile.website || undefined,
+        vatNumber: profile.taxId || undefined,
+      } as any);
+      if (res?.data) applyProfile(res.data);
       Alert.alert('Succès', 'Profil mis à jour avec succès');
       setEditing(false);
-    } catch (error) {
-      Alert.alert('Erreur', 'Impossible de mettre à jour le profil');
+    } catch (error: any) {
+      Alert.alert('Erreur', error?.response?.data?.message || 'Impossible de mettre à jour le profil');
     } finally {
       setSaving(false);
     }
@@ -120,14 +158,43 @@ export default function MerchantProfile() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: type === 'logo' ? [1, 1] : [16, 9],
-      quality: 0.8,
+      quality: 0.85,
     });
 
-    if (!result.canceled) {
-      if (type === 'logo') {
-        setLogo(result.assets[0].uri);
-      } else {
-        setCoverImage(result.assets[0].uri);
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+
+    // Upload immédiat — l'image est persistée même hors mode édition.
+    if (type === 'logo') {
+      setLogo(asset.uri); // aperçu optimiste
+      setUploadingLogo(true);
+      try {
+        const res = await merchantApi.uploadLogo({
+          uri: asset.uri,
+          mimeType: asset.mimeType,
+          fileName: asset.fileName ?? undefined,
+        });
+        setLogo(res.data.logoUrl ? resolveAssetUrl(res.data.logoUrl) : asset.uri);
+      } catch (error: any) {
+        Alert.alert('Erreur', error?.response?.data?.message || 'Échec de l’envoi du logo');
+        setLogo((prev) => prev); // garde l'aperçu; l'utilisateur peut réessayer
+      } finally {
+        setUploadingLogo(false);
+      }
+    } else {
+      setCoverImage(asset.uri);
+      setUploadingCover(true);
+      try {
+        const res = await merchantApi.uploadCover({
+          uri: asset.uri,
+          mimeType: asset.mimeType,
+          fileName: asset.fileName ?? undefined,
+        });
+        setCoverImage(res.data.coverUrl ? resolveAssetUrl(res.data.coverUrl) : asset.uri);
+      } catch (error: any) {
+        Alert.alert('Erreur', error?.response?.data?.message || 'Échec de l’envoi de la couverture');
+      } finally {
+        setUploadingCover(false);
       }
     }
   };
@@ -162,81 +229,101 @@ export default function MerchantProfile() {
     );
   }
 
+  const verified = validationStatus === 'APPROVED' || validationStatus === 'VERIFIED';
+  const rejected = validationStatus === 'REJECTED';
+  const statusColor = verified ? colors.success : rejected ? '#FF4D4F' : '#F59E0B';
+  const statusLabel = verified
+    ? 'Entreprise vérifiée'
+    : rejected
+      ? 'Demande rejetée'
+      : 'En attente de validation';
+
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Header */}
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Mon entreprise</Text>
-        {!editing ? (
-          <TouchableOpacity onPress={() => setEditing(true)} style={styles.editButton}>
-            <Ionicons name="create-outline" size={22} color={colors.primary} />
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 40 }} />
-        )}
-      </View>
-
-      {/* Images */}
-      <View style={styles.imagesSection}>
-        {/* Cover Image */}
-        <TouchableOpacity
-          style={[styles.coverContainer, { backgroundColor: colors.card }]}
-          onPress={() => editing && pickImage('cover')}
-          disabled={!editing}
-        >
-          {coverImage ? (
-            <Image source={{ uri: coverImage }} style={styles.coverImage} />
-          ) : (
-            <View style={styles.coverPlaceholder}>
-              <Ionicons name="image-outline" size={40} color={colors.textSecondary} />
-              <Text style={[styles.coverText, { color: colors.textSecondary }]}>
-                {editing ? 'Ajouter une bannière' : 'Bannière'}
-              </Text>
-            </View>
-          )}
-          {editing && (
-            <View style={styles.editCoverIcon}>
-              <Ionicons name="camera-outline" size={16} color="#fff" />
-            </View>
-          )}
-        </TouchableOpacity>
-
-        {/* Logo */}
-        <View style={styles.logoWrapper}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <GradientHeader
+        title="Mon entreprise"
+        rightIcon={editing ? undefined : 'create-outline'}
+        onRightPress={editing ? undefined : () => setEditing(true)}
+      />
+      <ScrollView
+        style={[styles.container, { backgroundColor: colors.background }]}
+        contentContainerStyle={{ paddingBottom: 40 }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Carte héros : couverture + logo + nom + statut */}
+        <View style={[styles.heroCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <TouchableOpacity
-            style={[styles.logoContainer, { backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => editing && pickImage('logo')}
+            style={[styles.coverContainer, { backgroundColor: `${colors.primary}12` }]}
+            onPress={() => editing && pickImage('cover')}
             disabled={!editing}
+            activeOpacity={editing ? 0.85 : 1}
           >
-            {logo ? (
-              <Image source={{ uri: logo }} style={styles.logoImage} />
+            {coverImage ? (
+              <Image source={{ uri: coverImage }} style={styles.coverImage} />
             ) : (
-              <Ionicons name="storefront-outline" size={50} color={colors.primary} />
+              <View style={styles.coverPlaceholder}>
+                <Ionicons name="image-outline" size={32} color={colors.primary} />
+                <Text style={[styles.coverText, { color: colors.primary }]}>
+                  {editing ? 'Ajouter une bannière' : 'Aucune bannière'}
+                </Text>
+              </View>
+            )}
+            {uploadingCover && (
+              <View style={styles.uploadOverlay}>
+                <ActivityIndicator color="#fff" />
+              </View>
             )}
             {editing && (
-              <View style={styles.editLogoIcon}>
-                <Ionicons name="camera-outline" size={14} color="#fff" />
+              <View style={styles.editCoverIcon}>
+                <Ionicons name="camera-outline" size={15} color="#fff" />
+                <Text style={styles.editCoverText}>{coverImage ? 'Modifier' : 'Ajouter'}</Text>
               </View>
             )}
           </TouchableOpacity>
-          <Text style={[styles.businessName, { color: colors.text }]}>{profile.businessName}</Text>
-          <View style={[styles.statusBadge, { backgroundColor: `${colors.success}20` }]}>
-            <View style={[styles.statusDot, { backgroundColor: colors.success }]} />
-            <Text style={[styles.statusText, { color: colors.success }]}>Entreprise vérifiée</Text>
+
+          <View style={styles.heroBody}>
+            <TouchableOpacity
+              style={[styles.logoContainer, { backgroundColor: colors.background, borderColor: colors.card }]}
+              onPress={() => editing && pickImage('logo')}
+              disabled={!editing}
+              activeOpacity={editing ? 0.85 : 1}
+            >
+              {logo ? (
+                <Image source={{ uri: logo }} style={styles.logoImage} />
+              ) : (
+                <Ionicons name="storefront-outline" size={42} color={colors.primary} />
+              )}
+              {uploadingLogo && (
+                <View style={styles.uploadOverlayRound}>
+                  <ActivityIndicator color="#fff" />
+                </View>
+              )}
+              {editing && (
+                <View style={[styles.editLogoIcon, { backgroundColor: colors.primary, borderColor: colors.card }]}>
+                  <Ionicons name="camera-outline" size={13} color="#fff" />
+                </View>
+              )}
+            </TouchableOpacity>
+
+            <Text style={[styles.businessName, { color: colors.text }]}>
+              {profile.businessName || 'Mon entreprise'}
+            </Text>
+            {!!profile.businessType && (
+              <Text style={[styles.businessType, { color: colors.textSecondary }]}>
+                {profile.businessType}
+              </Text>
+            )}
+            <View style={[styles.statusBadge, { backgroundColor: `${statusColor}1A` }]}>
+              <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+              <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
+            </View>
           </View>
         </View>
-      </View>
 
       {/* Formulaire */}
-      <View style={styles.formSection}>
+      <View style={[styles.formSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Informations générales</Text>
-        
+
         {renderField('Nom de l\'entreprise *', profile.businessName, 'businessName')}
         {renderField('Type d\'activité', profile.businessType, 'businessType')}
         
@@ -265,9 +352,9 @@ export default function MerchantProfile() {
         {renderField('NIF / STAT', profile.taxId, 'taxId')}
       </View>
 
-      <View style={styles.formSection}>
+      <View style={[styles.formSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Coordonnées</Text>
-        
+
         {renderField('Email *', profile.email, 'email', 'email-address')}
         {renderField('Téléphone *', profile.phone, 'phone', 'phone-pad')}
         {renderField('Adresse', profile.address, 'address')}
@@ -288,9 +375,9 @@ export default function MerchantProfile() {
         )}
       </View>
 
-      <View style={styles.formSection}>
+      <View style={[styles.formSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Informations bancaires</Text>
-        
+
         {renderField('Nom de la banque', profile.bankName, 'bankName')}
         {renderField('Numéro de compte', profile.accountNumber, 'accountNumber', 'numeric')}
         {renderField('Titulaire du compte', profile.accountHolder, 'accountHolder')}
@@ -326,96 +413,115 @@ export default function MerchantProfile() {
 
       {/* Espace */}
       <View style={{ height: 30 }} />
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-  },
-  backButton: { padding: 4 },
-  headerTitle: { fontSize: 20, fontWeight: 'bold' },
-  editButton: { padding: 8 },
 
-  imagesSection: {
-    marginBottom: 20,
+  heroCard: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    overflow: 'hidden',
   },
   coverContainer: {
     width: '100%',
-    height: 150,
+    height: 140,
     position: 'relative',
   },
   coverImage: {
     width: '100%',
-    height: 150,
+    height: 140,
     resizeMode: 'cover',
   },
   coverPlaceholder: {
     width: '100%',
-    height: 150,
+    height: 140,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 6,
   },
-  coverText: { fontSize: 14 },
+  coverText: { fontSize: 13, fontWeight: '500' },
+  uploadOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadOverlayRound: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    borderRadius: 44,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   editCoverIcon: {
     position: 'absolute',
     bottom: 10,
     right: 10,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    padding: 6,
-    borderRadius: 20,
-  },
-  logoWrapper: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: -40,
+    gap: 5,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 18,
+  },
+  editCoverText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  heroBody: {
+    alignItems: 'center',
+    paddingBottom: 18,
+    marginTop: -44,
   },
   logoContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 3,
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    borderWidth: 4,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
   },
   logoImage: {
-    width: 94,
-    height: 94,
-    borderRadius: 47,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     resizeMode: 'cover',
   },
   editLogoIcon: {
     position: 'absolute',
     bottom: 0,
     right: 0,
-    backgroundColor: '#3b82f6',
-    padding: 4,
+    padding: 5,
     borderRadius: 15,
+    borderWidth: 2,
   },
-  businessName: { fontSize: 18, fontWeight: 'bold', marginTop: 10 },
-  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, gap: 6, marginTop: 6 },
+  businessName: { fontSize: 19, fontWeight: '700', marginTop: 10, textAlign: 'center' },
+  businessType: { fontSize: 13, marginTop: 2, textAlign: 'center' },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, gap: 6, marginTop: 10 },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
-  statusText: { fontSize: 11, fontWeight: '500' },
+  statusText: { fontSize: 12, fontWeight: '600' },
 
   formSection: {
+    marginHorizontal: 16,
+    marginBottom: 16,
     paddingHorizontal: 16,
     paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#334155',
+    paddingBottom: 4,
+    borderRadius: 16,
+    borderWidth: 1,
   },
-  sectionTitle: { fontSize: 16, fontWeight: '600', marginBottom: 16 },
-  fieldContainer: { marginBottom: 16 },
+  sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 14 },
+  fieldContainer: { marginBottom: 14 },
   fieldLabel: { fontSize: 12, fontWeight: '500', marginBottom: 6 },
-  fieldValue: { fontSize: 15 },
+  fieldValue: { fontSize: 15, fontWeight: '500' },
   fieldInput: {
     borderWidth: 1,
     borderRadius: 10,

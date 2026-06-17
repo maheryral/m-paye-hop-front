@@ -16,6 +16,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useTheme } from '../../../../src/contexts/ThemeContext';
+import { merchantApi } from '../../../../src/services/merchantApi';
+import { userPreferencesService } from '../../../../src/services/api';
+import { useSocket } from '../../../../src/contexts/SocketContext';
 
 interface Notification {
   id: string;
@@ -25,6 +28,20 @@ interface Notification {
   isRead: boolean;
   createdAt: string;
   data?: any;
+}
+
+/** Mappe le type backend (PAYMENT_SUCCESS, REFUND, …) vers une catégorie d'affichage. */
+function mapNotifType(t?: string): Notification['type'] {
+  const s = (t || '').toUpperCase();
+  if (s.includes('REFUND')) return 'refund';
+  if (s.includes('PAYMENT') || s.includes('SALE') || s === 'TRANSFER_RECEIVED' || s === 'CREDIT')
+    return 'sale';
+  if (s.includes('REJECTED') || s.includes('FAILED') || s.includes('ALERT') || s.includes('WARNING') || s.includes('SECURITY'))
+    return 'warning';
+  if (s.includes('APPROVED') || s.includes('SUCCESS') || s.includes('COMPLETED'))
+    return 'success';
+  if (s.includes('PROMO') || s.includes('FEATURE')) return 'promotions';
+  return 'info';
 }
 
 interface NotificationSettings {
@@ -51,85 +68,72 @@ export default function MerchantNotifications() {
     sms: false,
   });
 
-  // Données mockées
-  const mockNotifications: Notification[] = [
-    {
-      id: '1',
-      title: 'Nouvelle vente !',
-      message: 'Vous avez reçu un paiement de 25 000 Ar de Jean Rakoto',
-      type: 'sale',
-      isRead: false,
-      createdAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(), // 5 minutes
-    },
-    {
-      id: '2',
-      title: 'Vente confirmée',
-      message: 'Paiement de 15 000 Ar reçu de Marie Rabe',
-      type: 'sale',
-      isRead: false,
-      createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(), // 30 minutes
-    },
-    {
-      id: '3',
-      title: 'Demande de remboursement',
-      message: 'Un client demande un remboursement de 10 000 Ar',
-      type: 'refund',
-      isRead: true,
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(), // 2 heures
-    },
-    {
-      id: '4',
-      title: 'Remboursement traité',
-      message: 'Le remboursement de 5 000 Ar a été effectué',
-      type: 'refund',
-      isRead: true,
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(), // 5 heures
-    },
-    {
-      id: '5',
-      title: 'Nouvelle promotion',
-      message: 'Découvrez notre nouvelle campagne marketing',
-      type: 'promotions',
-      isRead: false,
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(), // 1 jour
-    },
-    {
-      id: '6',
-      title: 'Mise à jour système',
-      message: 'L\'application a été mise à jour avec de nouvelles fonctionnalités',
-      type: 'info',
-      isRead: true,
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(), // 2 jours
-    },
-    {
-      id: '7',
-      title: 'Alerte sécurité',
-      message: 'Une nouvelle connexion a été détectée sur votre compte',
-      type: 'warning',
-      isRead: false,
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 72).toISOString(), // 3 jours
-    },
-    {
-      id: '8',
-      title: 'Félicitations !',
-      message: 'Vous avez atteint 100 ventes sur votre boutique',
-      type: 'success',
-      isRead: true,
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 96).toISOString(), // 4 jours
-    },
-  ];
+  const { onNotification } = useSocket();
 
   useEffect(() => {
     loadNotifications();
+    loadPreferences();
+    // Temps réel : recharge la liste dès qu'une notif arrive (vente, remboursement…).
+    const unsub = onNotification(() => loadNotifications());
+    return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Charge les préférences réelles (/user/preferences). Le backend expose
+  // notifPush / notifEmail / notifSms / notifPromotions ; les catégories push
+  // (ventes/remboursements/système) partagent le drapeau notifPush.
+  const loadPreferences = async () => {
+    try {
+      const p: any = await userPreferencesService.get();
+      setSettings({
+        sales: !!p.notifPush,
+        refunds: !!p.notifPush,
+        system: !!p.notifPush,
+        promotions: !!p.notifPromotions,
+        email: !!p.notifEmail,
+        sms: !!p.notifSms,
+      });
+    } catch (e: any) {
+      console.error('prefs notif:', e?.response?.data || e?.message);
+    }
+  };
+
+  /** Met à jour un toggle + persiste le champ backend correspondant. */
+  const updateSetting = async (key: keyof NotificationSettings, val: boolean) => {
+    setSettings((prev) => ({ ...prev, [key]: val }));
+    const field =
+      key === 'email'
+        ? 'notifEmail'
+        : key === 'sms'
+          ? 'notifSms'
+          : key === 'promotions'
+            ? 'notifPromotions'
+            : 'notifPush'; // sales / refunds / system → push
+    try {
+      await userPreferencesService.update({ [field]: val });
+    } catch (e: any) {
+      console.error('update pref notif:', e?.response?.data || e?.message);
+    }
+  };
 
   const loadNotifications = async () => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setNotifications(mockNotifications);
-    } catch (error) {
-      console.error('Erreur:', error);
+      const res = await merchantApi.getNotifications(1, 50);
+      const list = (res.data?.notifications ?? []) as any[];
+      setNotifications(
+        list.map((n) => ({
+          id: n.id,
+          title: n.title,
+          message: n.message,
+          type: mapNotifType(n.type),
+          isRead: !!n.isRead,
+          createdAt: n.createdAt,
+          data: n,
+        })),
+      );
+    } catch (error: any) {
+      console.error('Notif marchand:', error?.response?.data || error?.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -179,11 +183,17 @@ export default function MerchantNotifications() {
   };
 
   const markAsRead = async (id: string) => {
+    const target = notifications.find((n) => n.id === id);
+    if (!target || target.isRead) return; // déjà lue → rien à faire
+    // Optimiste + persistance backend
     setNotifications(prev =>
-      prev.map(notif =>
-        notif.id === id ? { ...notif, isRead: true } : notif
-      )
+      prev.map(notif => (notif.id === id ? { ...notif, isRead: true } : notif)),
     );
+    try {
+      await merchantApi.markNotificationAsRead(id);
+    } catch (e: any) {
+      console.error('markAsRead:', e?.response?.data || e?.message);
+    }
   };
 
   const markAllAsRead = async () => {
@@ -194,10 +204,13 @@ export default function MerchantNotifications() {
         { text: 'Annuler', style: 'cancel' },
         {
           text: 'Confirmer',
-          onPress: () => {
-            setNotifications(prev =>
-              prev.map(notif => ({ ...notif, isRead: true }))
-            );
+          onPress: async () => {
+            setNotifications(prev => prev.map(notif => ({ ...notif, isRead: true })));
+            try {
+              await merchantApi.markAllNotificationsAsRead();
+            } catch (e: any) {
+              console.error('markAllAsRead:', e?.response?.data || e?.message);
+            }
           },
         },
       ]
@@ -213,8 +226,15 @@ export default function MerchantNotifications() {
         {
           text: 'Supprimer',
           style: 'destructive',
-          onPress: () => {
-            setNotifications(prev => prev.filter(notif => notif.id !== id));
+          onPress: async () => {
+            const prev = notifications;
+            setNotifications((list) => list.filter((n) => n.id !== id));
+            try {
+              await merchantApi.deleteNotification(id);
+            } catch (e: any) {
+              console.error('deleteNotification:', e?.response?.data || e?.message);
+              setNotifications(prev); // rollback si échec
+            }
           },
         },
       ]
@@ -222,6 +242,7 @@ export default function MerchantNotifications() {
   };
 
   const clearAllNotifications = () => {
+    if (notifications.length === 0) return;
     Alert.alert(
       'Tout supprimer',
       'Voulez-vous supprimer toutes les notifications ?',
@@ -230,8 +251,15 @@ export default function MerchantNotifications() {
         {
           text: 'Supprimer',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
+            const prev = notifications;
             setNotifications([]);
+            try {
+              await merchantApi.clearNotifications();
+            } catch (e: any) {
+              console.error('clearNotifications:', e?.response?.data || e?.message);
+              setNotifications(prev); // rollback si échec
+            }
           },
         },
       ]
@@ -297,7 +325,7 @@ export default function MerchantNotifications() {
                 </View>
                 <Switch
                   value={settings.sales}
-                  onValueChange={(val) => setSettings({ ...settings, sales: val })}
+                  onValueChange={(val) => updateSetting('sales', val)}
                   trackColor={{ false: '#767577', true: colors.primary }}
                   thumbColor={settings.sales ? '#fff' : '#f4f3f4'}
                 />
@@ -310,7 +338,7 @@ export default function MerchantNotifications() {
                 </View>
                 <Switch
                   value={settings.refunds}
-                  onValueChange={(val) => setSettings({ ...settings, refunds: val })}
+                  onValueChange={(val) => updateSetting('refunds', val)}
                   trackColor={{ false: '#767577', true: colors.primary }}
                   thumbColor={settings.refunds ? '#fff' : '#f4f3f4'}
                 />
@@ -323,7 +351,7 @@ export default function MerchantNotifications() {
                 </View>
                 <Switch
                   value={settings.promotions}
-                  onValueChange={(val) => setSettings({ ...settings, promotions: val })}
+                  onValueChange={(val) => updateSetting('promotions', val)}
                   trackColor={{ false: '#767577', true: colors.primary }}
                   thumbColor={settings.promotions ? '#fff' : '#f4f3f4'}
                 />
@@ -336,7 +364,7 @@ export default function MerchantNotifications() {
                 </View>
                 <Switch
                   value={settings.system}
-                  onValueChange={(val) => setSettings({ ...settings, system: val })}
+                  onValueChange={(val) => updateSetting('system', val)}
                   trackColor={{ false: '#767577', true: colors.primary }}
                   thumbColor={settings.system ? '#fff' : '#f4f3f4'}
                 />
@@ -353,7 +381,7 @@ export default function MerchantNotifications() {
                 </View>
                 <Switch
                   value={settings.email}
-                  onValueChange={(val) => setSettings({ ...settings, email: val })}
+                  onValueChange={(val) => updateSetting('email', val)}
                   trackColor={{ false: '#767577', true: colors.primary }}
                   thumbColor={settings.email ? '#fff' : '#f4f3f4'}
                 />
@@ -366,7 +394,7 @@ export default function MerchantNotifications() {
                 </View>
                 <Switch
                   value={settings.sms}
-                  onValueChange={(val) => setSettings({ ...settings, sms: val })}
+                  onValueChange={(val) => updateSetting('sms', val)}
                   trackColor={{ false: '#767577', true: colors.primary }}
                   thumbColor={settings.sms ? '#fff' : '#f4f3f4'}
                 />

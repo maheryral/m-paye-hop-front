@@ -34,8 +34,16 @@ interface Transaction {
   createdAt: string;
   isCredit: boolean;
   method?: 'CARD' | 'MVOLA' | 'AIRTEL' | 'ORANGE' | 'WALLET' | null;
-  sender?: { fullName: string; email: string; telephone: string };
-  receiver?: { fullName: string; email: string; telephone: string };
+  sender?: { fullName: string; email: string; telephone: string; isMerchant?: boolean; merchant?: { nom: string } | null };
+  receiver?: { fullName: string; email: string; telephone: string; isMerchant?: boolean; merchant?: { nom: string } | null };
+}
+
+/** Vrai si la transaction est un paiement vers/depuis un marchand. */
+function isMerchantPayment(tx: Transaction): boolean {
+  if (tx.type?.startsWith('PAYMENT')) return true;
+  if (!tx.isCredit && tx.receiver?.isMerchant) return true;
+  if (tx.isCredit && tx.sender?.isMerchant) return true;
+  return false;
 }
 
 /** Métadonnées d'affichage du mode de financement (badge). null = wallet (pas de badge). */
@@ -150,13 +158,22 @@ export default function History() {
 
   const getTransactionTitle = (tx: Transaction) => {
     if (tx.type === 'DEPOSIT') return 'Dépôt MyWallet';
-    if (tx.isCredit && tx.sender?.fullName) return `Reçu de ${tx.sender.fullName}`;
-    if (!tx.isCredit && tx.receiver?.fullName) return `Envoyé à ${tx.receiver.fullName}`;
+    const merchantPay = isMerchantPayment(tx);
+    if (tx.isCredit && tx.sender?.fullName)
+      return merchantPay ? `Encaissement de ${tx.sender.fullName}` : `Reçu de ${tx.sender.fullName}`;
+    if (!tx.isCredit && tx.receiver?.fullName)
+      return merchantPay ? `Paiement à ${tx.receiver.fullName}` : `Envoyé à ${tx.receiver.fullName}`;
     return tx.motif || 'Transaction';
   };
 
   const typeLabel = (tx: Transaction) =>
-    tx.type === 'DEPOSIT' ? 'Dépôt' : tx.type === 'WITHDRAWAL' ? 'Retrait' : 'Transfert';
+    tx.type === 'DEPOSIT'
+      ? 'Dépôt'
+      : tx.type === 'WITHDRAWAL'
+        ? 'Retrait'
+        : isMerchantPayment(tx)
+          ? 'Paiement marchand'
+          : 'Transfert';
 
   const escapeHtml = (s: string) =>
     s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

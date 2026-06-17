@@ -244,7 +244,7 @@ export default function Register() {
             <TextInput
               style={styles.phoneInput}
               placeholder="32 12 345 67"
-              placeholderTextColor="#6b7280"
+              placeholderTextColor="#64748b"
               value={phoneNumber}
               onChangeText={(text) => setPhoneNumber(formatPhoneNumber(text))}
               keyboardType="phone-pad"
@@ -254,12 +254,12 @@ export default function Register() {
       ) : (
         <View style={styles.emailInputSection}>
           <View style={styles.inputIcon}>
-            <Ionicons name="mail-outline" size={20} color="#6b7280" />
+            <Ionicons name="mail-outline" size={20} color="#64748b" />
           </View>
           <TextInput
             style={styles.emailInput}
             placeholder="Adresse e-mail"
-            placeholderTextColor="#6b7280"
+            placeholderTextColor="#64748b"
             value={email}
             onChangeText={setEmail}
             autoCapitalize="none"
@@ -333,12 +333,12 @@ export default function Register() {
       >
         <View style={styles.content}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="chevron-back" size={28} color="#007aff" />
+            <Ionicons name="chevron-back" size={28} color="#2563eb" />
           </TouchableOpacity>
 
           <View style={styles.logoContainer}>
             <View style={styles.logoCircle}>
-              <Ionicons name="wallet-outline" size={50} color="#007aff" />
+              <Ionicons name="wallet-outline" size={50} color="#2563eb" />
             </View>
             <Text style={styles.logoText}>M'Paye</Text>
           </View>
@@ -360,8 +360,8 @@ export default function Register() {
             <View style={[styles.errorIcon, { backgroundColor: '#ef444420' }]}>
               <Ionicons name="alert-circle" size={50} color="#ef4444" />
             </View>
-            <Text style={[styles.errorTitle, { color: '#fff' }]}>Erreur</Text>
-            <Text style={[styles.errorMessage, { color: '#9ca3af' }]}>{errorMessage}</Text>
+            <Text style={[styles.errorTitle, { color: '#0f172a' }]}>Erreur</Text>
+            <Text style={[styles.errorMessage, { color: '#64748b' }]}>{errorMessage}</Text>
           </Animated.View>
         </View>
       </Modal>
@@ -378,8 +378,8 @@ export default function Register() {
             <View style={[styles.successIcon, { backgroundColor: '#3b82f620' }]}>
               <Ionicons name="checkmark-circle" size={60} color="#3b82f6" />
             </View>
-            <Text style={[styles.successTitle, { color: '#fff' }]}>Inscription réussie !</Text>
-            <Text style={[styles.successMessage, { color: '#9ca3af' }]}>Bienvenue sur MyWallet</Text>
+            <Text style={[styles.successTitle, { color: '#0f172a' }]}>Inscription réussie !</Text>
+            <Text style={[styles.successMessage, { color: '#64748b' }]}>Bienvenue sur MyWallet</Text>
           </Animated.View>
         </View>
       </Modal>
@@ -390,7 +390,7 @@ export default function Register() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#f8fafc',
   },
   content: {
     flex: 1,
@@ -413,22 +413,22 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: '#1e293b',
+    backgroundColor: '#ffffff',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#e2e8f0',
   },
   logoText: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#ffffff',
+    color: '#0f172a',
     letterSpacing: 1,
   },
   modeSelector: {
     flexDirection: 'row',
-    backgroundColor: '#1e293b',
+    backgroundColor: '#ffffff',
     borderRadius: 30,
     padding: 4,
     marginBottom: 30,
@@ -440,12 +440,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   activeModeButton: {
-    backgroundColor: '#007aff',
+    backgroundColor: '#2563eb',
   },
   modeButtonText: {
     fontSize: 15,
     fontWeight: '500',
-    color: '#9ca3af',
+    color: '#64748b',
   },
   activeModeText: {
     color: '#fff',
@@ -454,20 +454,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 0.5,
-    borderColor: '#334155',
+    borderColor: '#e2e8f0',
     borderRadius: 12,
-    backgroundColor: '#1e293b',
+    backgroundColor: '#ffffff',
     marginBottom: 20,
   },
   countryCode: {
     paddingHorizontal: 15,
     paddingVertical: 14,
     borderRightWidth: 0.5,
-    borderRightColor: '#334155',
+    borderRightColor: '#e2e8f0',
   },
   countryCodeText: {
     fontSize: 16,
-    color: '#ffffff',
+    color: '#0f172a',
   },
   phoneInputContainer: {
     flex: 1,
@@ -475,15 +475,15 @@ const styles = StyleSheet.create({
   phoneInput: {
     padding: 14,
     fontSize: 16,
-    color: '#ffffff',
+    color: '#0f172a',
   },
   emailInputSection: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 0.5,
-    borderColor: '#334155',
+    borderColor: '#e2e8f0',
     borderRadius: 12,
-    backgroundColor: '#1e293b',
+    backgroundColor: '#ffffff',
     marginBottom: 20,
     paddingHorizontal: 14,
   },
@@ -494,10 +494,10 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 14,
     fontSize: 16,
-    color: '#ffffff',
+    color: '#0f172a',
   },
   nextButton: {
-    backgroundColor: '#007aff',
+    backgroundColor: '#2563eb',
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
@@ -514,19 +514,19 @@ const styles = StyleSheet.create({
   otpTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#ffffff',
+    color: '#0f172a',
     textAlign: 'center',
     marginBottom: 12,
   },
   otpSubtitle: {
     fontSize: 14,
-    color: '#9ca3af',
+    color: '#64748b',
     textAlign: 'center',
     marginBottom: 30,
     lineHeight: 22,
   },
   otpIdentifier: {
-    color: '#007aff',
+    color: '#2563eb',
     fontWeight: '600',
   },
   otpContainer: {
@@ -538,10 +538,10 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#e2e8f0',
     borderRadius: 12,
-    backgroundColor: '#1e293b',
-    color: '#ffffff',
+    backgroundColor: '#ffffff',
+    color: '#0f172a',
     fontSize: 20,
     fontWeight: '600',
     textAlign: 'center',
@@ -551,20 +551,20 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   timerText: {
-    color: '#9ca3af',
+    color: '#64748b',
     fontSize: 14,
   },
   timerCount: {
-    color: '#007aff',
+    color: '#2563eb',
     fontWeight: '600',
   },
   resendText: {
-    color: '#007aff',
+    color: '#2563eb',
     fontSize: 14,
     fontWeight: '500',
   },
   verifyButton: {
-    backgroundColor: '#007aff',
+    backgroundColor: '#2563eb',
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
@@ -585,7 +585,7 @@ const styles = StyleSheet.create({
   },
   errorModal: {
     width: '80%',
-    backgroundColor: '#1e293b',
+    backgroundColor: '#ffffff',
     borderRadius: 20,
     padding: 24,
     alignItems: 'center',
@@ -606,16 +606,16 @@ const styles = StyleSheet.create({
   errorTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#0f172a',
   },
   errorMessage: {
     fontSize: 14,
     textAlign: 'center',
-    color: '#9ca3af',
+    color: '#64748b',
   },
   successModal: {
     width: '80%',
-    backgroundColor: '#1e293b',
+    backgroundColor: '#ffffff',
     borderRadius: 20,
     padding: 24,
     alignItems: 'center',
@@ -636,11 +636,11 @@ const styles = StyleSheet.create({
   successTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#0f172a',
   },
   successMessage: {
     fontSize: 14,
     textAlign: 'center',
-    color: '#9ca3af',
+    color: '#64748b',
   },
 });

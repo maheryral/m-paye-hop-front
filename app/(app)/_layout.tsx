@@ -41,6 +41,10 @@ function CustomDrawerContent({ navigation }: any) {
       const response = await merchantApi.getStatus();
       if (response.data?.hasMerchant && response.data?.merchant) {
         setMerchantProfile(response.data.merchant);
+        // Réouverture : si le dernier contexte était marchand, on affiche
+        // directement le menu marchand pour rester cohérent avec la route.
+        const ctx = await secureStorage.getItem('activeContext');
+        if (ctx === 'merchant') setShowMerchantMenu(true);
       } else {
         setMerchantProfile(null);
       }
@@ -59,6 +63,8 @@ function CustomDrawerContent({ navigation }: any) {
         text: 'Déconnexion',
         style: 'destructive',
         onPress: async () => {
+          // Oublie le contexte marchand pour la prochaine connexion.
+          await secureStorage.removeItem('activeContext').catch(() => {});
           await logout();
           router.replace('/(auth)/login');
         },
@@ -98,6 +104,8 @@ function CustomDrawerContent({ navigation }: any) {
       await Promise.all([
         secureStorage.setItem('accessToken', res.data.accessToken),
         secureStorage.setItem('refreshToken', res.data.refreshToken),
+        // Mémorise le dernier contexte actif → réouverture directe en marchand.
+        secureStorage.setItem('activeContext', 'merchant'),
       ]);
       setShowMerchantMenu(true);
       router.push('/(app)/(tabs)/merchant/dashboard');
@@ -116,6 +124,8 @@ function CustomDrawerContent({ navigation }: any) {
     setIsSwitching(true);
     try {
       await new Promise((resolve) => setTimeout(resolve, 600));
+      // Repasse le contexte par défaut en "user" pour la prochaine réouverture.
+      await secureStorage.setItem('activeContext', 'user');
       setShowMerchantMenu(false);
       navigation.navigate('dashboard');
     } catch (error) {
@@ -126,6 +136,9 @@ function CustomDrawerContent({ navigation }: any) {
   };
 
   const navigateToMerchantRoute = (route: string) => {
+    // router.push (expo-router) ne ferme pas le drawer comme navigation.navigate :
+    // on le ferme explicitement avant de naviguer.
+    navigation.closeDrawer?.();
     router.push(`/(app)/(tabs)/${route}` as any);
   };
 
@@ -248,12 +261,18 @@ function CustomDrawerContent({ navigation }: any) {
       >
         {/* ─── Carte profil ─── */}
         <TouchableOpacity
-          onPress={goToProfile}
+          onPress={showMerchantMenu ? () => navigateToMerchantRoute('merchant/profile') : goToProfile}
           style={[styles.profileCard, { backgroundColor: colors.card, borderColor: colors.border }]}
           activeOpacity={0.7}
         >
           <View style={styles.avatar}>
-            {user?.avatarUrl ? (
+            {showMerchantMenu ? (
+              merchantProfile?.logoUrl ? (
+                <Image source={{ uri: resolveAssetUrl(merchantProfile.logoUrl) }} style={styles.avatarImage} />
+              ) : (
+                <Ionicons name="storefront" size={24} color="#fff" />
+              )
+            ) : user?.avatarUrl ? (
               <Image source={{ uri: resolveAssetUrl(user.avatarUrl) }} style={styles.avatarImage} />
             ) : (
               <Text style={styles.avatarText}>
@@ -265,14 +284,24 @@ function CustomDrawerContent({ navigation }: any) {
           </View>
           <View style={styles.profileText}>
             <Text style={[styles.profileName, { color: colors.text }]} numberOfLines={1}>
-              {user?.prenom ? `${user.prenom} ${user.nom || ''}` : user?.email?.split('@')[0] || 'Utilisateur'}
+              {showMerchantMenu
+                ? merchantProfile?.businessName || 'Mon entreprise'
+                : user?.prenom
+                  ? `${user.prenom} ${user.nom || ''}`
+                  : user?.email?.split('@')[0] || 'Utilisateur'}
             </Text>
             <Text style={[styles.profileEmail, { color: colors.textSecondary }]} numberOfLines={1}>
-              {user?.email}
+              {showMerchantMenu ? user?.email || 'Espace commerçant' : user?.email}
             </Text>
             <View style={styles.kycBadge}>
-              <Ionicons name="shield-checkmark" size={11} color="#3b82f6" />
-              <Text style={styles.kycText}>KYC {user?.kycLevel || 'BASIC'}</Text>
+              <Ionicons
+                name={showMerchantMenu ? 'storefront' : 'shield-checkmark'}
+                size={11}
+                color="#3b82f6"
+              />
+              <Text style={styles.kycText}>
+                {showMerchantMenu ? 'Commerçant' : `KYC ${user?.kycLevel || 'BASIC'}`}
+              </Text>
             </View>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />

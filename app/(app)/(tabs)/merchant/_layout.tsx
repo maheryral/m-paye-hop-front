@@ -36,8 +36,8 @@ export default function MerchantLayout() {
     }, [roleLoading])
   );
 
-  // Couleur unique (bleu nuit)
-  const merchantColor = '#000000';
+  // En-tête marchand = bleu primaire (cohérent avec le dashboard, OK clair/sombre)
+  const merchantColor = colors.primary;
 
   // Écran de chargement
   if (isLoading || roleLoading) {
@@ -73,28 +73,16 @@ export default function MerchantLayout() {
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: merchantColor },
-        headerTintColor: '#fff',
-        headerTitleStyle: { fontWeight: '600', fontSize: 18 },
-        headerBackTitle: 'Retour',
-        headerBackVisible: true,
-        headerShadowVisible: false,
+        // En-têtes natifs masqués sur tout l'espace marchand (chaque écran gère
+        // son propre header in-page si besoin).
+        headerShown: false,
       }}
     >
       <Stack.Screen
         name="dashboard"
         options={{
-          title: '', 
-          headerTitle: () => (
-            <View style={styles.customHeader}>
-              <View style={styles.iconContainer}>
-                <Ionicons name="storefront" size={18} color="#fff" />
-              </View>
-              <Text style={styles.headerTitle}>
-                {merchantProfile?.businessName || 'Mon Commerce'}
-              </Text>
-            </View>
-          ),
+          // En-tête natif masqué : le dashboard a son propre header in-page.
+          headerShown: false,
         }}
       />
 

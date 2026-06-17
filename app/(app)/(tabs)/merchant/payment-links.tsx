@@ -15,6 +15,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import GradientHeader from '../../../../src/components/GradientHeader';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import { useTheme } from '../../../../src/contexts/ThemeContext';
@@ -167,6 +168,7 @@ export default function MerchantPaymentLinks() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <GradientHeader title="Liens de paiement" />
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={
